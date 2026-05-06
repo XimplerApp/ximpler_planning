@@ -864,7 +864,7 @@
 
     const sampleObjectives = [
       {
-        id: 'sample_obj_001',
+        id: crypto.randomUUID(),
         planningId: 'plan_demo_2026',
         name: 'Recuperar Cartera Vencida',
         description: 'Recuperar cartera vencida correspondiente al periodo 2019 y 2020.',
@@ -886,7 +886,7 @@
         history: ['Objetivo creado el 13-may-2021.']
       },
       {
-        id: 'sample_obj_002',
+        id: crypto.randomUUID(),
         planningId: 'plan_demo_2026',
         name: 'Posicionar la marca en redes sociales',
         description: 'Incrementar notoriedad y tracción digital de marca en redes clave.',
@@ -911,7 +911,7 @@
 
     const state = { plannings: loadPlannings(), objectives: [], currentPlanningId: null, editingPlanningId: null, expandedObjectiveIds: new Set(), formTags: [], editingId: null, detailId: null, detailTab: 'comments', detailIndicatorView: 'active', indicatorModalMode: 'create', editingIndicatorIndex: null, valueHistoryModalIndicatorIndex: null, metaPlanIndicatorIndex: null, activityModalMode: 'create', editingActivityIndex: null, actionObjectiveId: null, actionActivityIndex: null, editingActionIndex: null };
     state.objectives = loadObjectives().map(obj => ({ ...obj, planningId: obj.planningId || state.plannings[0]?.id || 'plan_demo_2026' }));
-    state.objectives = state.objectives.map(obj => state.plannings.some(plan => plan.id === obj.planningId) ? obj : ({ ...obj, planningId: state.plannings[0]?.id || 'plan_demo_2026' }));
+    state.objectives = state.objectives.map(obj => state.plannings.some(plan => sameId(plan.id, obj.planningId)) ? obj : ({ ...obj, planningId: state.plannings[0]?.id || 'plan_demo_2026' }));
     const planningView = document.getElementById('planningView');
     const objectivesView = document.getElementById('objectivesView');
     const planningCards = document.getElementById('planningCards');
@@ -941,6 +941,29 @@
     const initiativeActionsModal = document.getElementById('initiativeActionsModal');
     const initiativeActionsContent = document.getElementById('initiativeActionsContent');
     const actionDetailModal = document.getElementById('actionDetailModal');
+
+    // FIX GitHub Pages / navegación dinámica:
+    // Captura el click de Detalles directamente desde el tbody antes de cualquier otro listener.
+    // Esto evita que el botón dependa de reasignaciones onclick después de renderizar filas.
+    if (objectivesBody) {
+      objectivesBody.addEventListener('click', function(e){
+        const detailBtn = e.target.closest('[data-view-id]');
+        if (!detailBtn) return;
+        e.preventDefault();
+        e.stopPropagation();
+        openDetailModal(detailBtn.getAttribute('data-view-id'));
+      }, true);
+    }
+
+    window.__openObjectiveDetail = function(button){
+      const id = button?.getAttribute?.('data-view-id');
+      if (!id) {
+        alert('No se encontró el ID del objetivo para abrir el detalle.');
+        return false;
+      }
+      openDetailModal(id);
+      return false;
+    };
 
     function normalizeComment(comment){
       if (typeof comment === 'string') return { author:'Sistema', text:comment, date:new Date().toISOString().slice(0,10) };
@@ -1084,7 +1107,7 @@
     function persistPlannings(){ localStorage.setItem(PLANNING_SAVE_KEY, JSON.stringify(state.plannings)); }
 
     function getCurrentPlanning(){
-      return state.plannings.find(plan => plan.id === state.currentPlanningId) || null;
+      return state.plannings.find(plan => sameId(plan.id, state.currentPlanningId)) || null;
     }
 
     function loadObjectives(){
@@ -1100,7 +1123,20 @@
     }
 
     function persistObjectives(){ localStorage.setItem(SAVE_KEY, JSON.stringify(state.objectives)); }
-    function formatDate(dateString){ if (!dateString) return '—'; const date = new Date(dateString + 'T00:00:00'); return new Intl.DateTimeFormat('es-MX', { day:'2-digit', month:'short', year:'numeric' }).format(date); }
+    function sameId(a, b){ return String(a) === String(b); }
+    function parseFlexibleDate(value){
+      if (!value) return null;
+      if (value instanceof Date && !Number.isNaN(value.getTime())) return value;
+      const raw = String(value).trim();
+      if (!raw) return null;
+      const date = /^\d{4}-\d{2}-\d{2}$/.test(raw) ? new Date(raw + 'T00:00:00') : new Date(raw);
+      return Number.isNaN(date.getTime()) ? null : date;
+    }
+    function formatDate(dateString){
+      const date = parseFlexibleDate(dateString);
+      if (!date) return '—';
+      return new Intl.DateTimeFormat('es-MX', { day:'2-digit', month:'short', year:'numeric' }).format(date);
+    }
     function statusLabel(status){ return ({activo:'Activo', en_riesgo:'En riesgo', pausado:'Pausado', cumplido:'Cumplido'})[status] || status; }
     function getProgressColor(value){ if (value >= 80) return 'var(--green)'; if (value >= 50) return 'var(--yellow)'; return 'var(--red)'; }
     function getEffectiveTarget(indicator = {}, referenceDate = new Date()){
@@ -1153,7 +1189,8 @@
     function calculateQualitativeProgress(activities=[]){ if (!activities.length) return 0; const vals = activities.map(item => Math.max(0, Math.min(100, Number(item.progress || 0)))); return Math.round(vals.reduce((a,b)=>a+b,0) / vals.length); }
     function uniqueParticipants(obj){ return Array.from(new Set([obj.createdBy, obj.leader, ...(obj.invited || [])].filter(Boolean))); }
     function formatDateTime(date = new Date()){
-      const value = date instanceof Date ? date : new Date(date);
+      const value = parseFlexibleDate(date);
+      if (!value) return '—';
       return new Intl.DateTimeFormat('es-MX', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' }).format(value);
     }
     function formatTime(timeString){
@@ -1299,7 +1336,7 @@
       if (!name) return alert('Ingresa el Nombre del Objetivo (KPI).');
       if (!leader) return alert('Selecciona un Líder Responsable.');
 
-      const previous = state.editingId ? state.objectives.find(obj => obj.id === state.editingId) : null;
+      const previous = state.editingId ? state.objectives.find(obj => sameId(obj.id, state.editingId)) : null;
       const actor = askActionUser(leader);
       if (!actor) return;
       const objective = normalizeObjective({
@@ -1327,7 +1364,7 @@
       });
 
       if (state.editingId){
-        const index = state.objectives.findIndex(obj => obj.id === state.editingId);
+        const index = state.objectives.findIndex(obj => sameId(obj.id, state.editingId));
         if (index !== -1) state.objectives[index] = objective;
       } else {
         state.objectives.unshift(objective);
@@ -1340,7 +1377,7 @@
     }
 
     function startEdit(id){
-      const obj = state.objectives.find(item => item.id === id);
+      const obj = state.objectives.find(item => sameId(item.id, id));
       if (!obj) return;
       resetForm();
       state.editingId = id;
@@ -1364,13 +1401,13 @@
     }
 
     function deleteObjective(id){
-      const obj = state.objectives.find(item => item.id === id);
+      const obj = state.objectives.find(item => sameId(item.id, id));
       if (!obj) return;
       if (!confirm(`¿Seguro que deseas eliminar el objetivo "${obj.name}"?`)) return;
-      state.objectives = state.objectives.filter(item => item.id !== id);
+      state.objectives = state.objectives.filter(item => !sameId(item.id, id));
       persistObjectives();
       renderObjectives();
-      if (state.detailId === id) closeDetailModal();
+      if (sameId(state.detailId, id)) closeDetailModal();
     }
 
 
@@ -1400,7 +1437,7 @@
     function openPlanningModal(mode = 'create', planningId = null){
       resetPlanningForm();
       if (mode === 'edit') {
-        const plan = state.plannings.find(item => item.id === planningId);
+        const plan = state.plannings.find(item => sameId(item.id, planningId));
         if (!plan) return;
         state.editingPlanningId = planningId;
         document.getElementById('planningModalTitle').textContent = 'Editar Planeación';
@@ -1429,7 +1466,7 @@
       const actor = askActionUser(document.getElementById('planningOwner').value.trim() || 'Sistema');
       if (!actor) return;
 
-      const previous = state.editingPlanningId ? state.plannings.find(item => item.id === state.editingPlanningId) : null;
+      const previous = state.editingPlanningId ? state.plannings.find(item => sameId(item.id, state.editingPlanningId)) : null;
       const planning = normalizePlanning({
         id: previous?.id || crypto.randomUUID(),
         name,
@@ -1445,7 +1482,7 @@
       planning.history.unshift(`${previous ? 'Planeación actualizada' : 'Planeación creada'} por ${actor} el ${formatDateTime()}.`);
 
       if (previous) {
-        const index = state.plannings.findIndex(item => item.id === previous.id);
+        const index = state.plannings.findIndex(item => sameId(item.id, previous.id));
         state.plannings[index] = planning;
       } else {
         state.plannings.unshift(planning);
@@ -1457,15 +1494,15 @@
     }
 
     function deletePlanning(id){
-      const plan = state.plannings.find(item => item.id === id);
+      const plan = state.plannings.find(item => sameId(item.id, id));
       if (!plan) return;
-      const relatedCount = state.objectives.filter(obj => obj.planningId === id).length;
+      const relatedCount = state.objectives.filter(obj => sameId(obj.planningId, id)).length;
       const message = relatedCount
         ? `¿Seguro que deseas eliminar la planeación "${plan.name}"? También se eliminarán ${relatedCount} objetivo(s) asociados.`
         : `¿Seguro que deseas eliminar la planeación "${plan.name}"?`;
       if (!confirm(message)) return;
       state.plannings = state.plannings.filter(item => item.id !== id);
-      state.objectives = state.objectives.filter(obj => obj.planningId !== id);
+      state.objectives = state.objectives.filter(obj => !sameId(obj.planningId, id));
       persistPlannings();
       persistObjectives();
       renderPlannings();
@@ -1483,7 +1520,7 @@
       planningEmptyState.style.display = filtered.length ? 'none' : 'block';
 
       filtered.forEach(plan => {
-        const objectives = state.objectives.filter(obj => obj.planningId === plan.id);
+        const objectives = state.objectives.filter(obj => sameId(obj.planningId, plan.id));
         const ql = objectives.length ? Math.round(objectives.map(obj => calculateQualitativeProgress(obj.activities)).reduce((a,b)=>a+b,0) / objectives.length) : 0;
         const qt = objectives.length ? Math.round(objectives.map(obj => calculateQuantitativeProgress(obj.indicators)).reduce((a,b)=>a+b,0) / objectives.length) : 0;
         const card = document.createElement('div');
@@ -1533,7 +1570,7 @@
       }
       const query = document.getElementById('searchInput').value.trim().toLowerCase();
       const status = document.getElementById('statusFilter').value;
-      const filtered = state.objectives.filter(obj => obj.planningId === state.currentPlanningId).filter(obj => {
+      const filtered = state.objectives.filter(obj => sameId(obj.planningId, state.currentPlanningId)).filter(obj => {
         const haystack = [obj.name, obj.description, obj.leader, obj.createdBy, ...(obj.tags || []), ...(obj.areas || []), ...(obj.linkedProjects || []), ...(obj.invited || []), ...((obj.reminders || []).map(x => x.text || '')), ...((obj.activities || []).flatMap(x => [x.name || '', x.owner || '', x.status || '', x.dueDate || ''])), ...((obj.checklist || []).flatMap(x => [x.text || '', x.dueDate || ''])), ...((obj.links || []).flatMap(x => [x.title || '', x.url || ''])), ...((obj.attachments || []).map(x => x.name || ''))].join(' ').toLowerCase();
         return (!query || haystack.includes(query)) && (status === 'all' || obj.status === status);
       });
@@ -1555,7 +1592,7 @@
           <td><span class="status-badge status-${obj.status}">${statusLabel(obj.status)}</span></td>
           <td>
             <div class="actions-inline">
-              <button class="btn-light small" type="button" data-view-id="${obj.id}">Detalles</button>
+              <button class="btn-light small" type="button" data-view-id="${escapeHtml(obj.id)}" onclick="return window.__openObjectiveDetail(this)">Detalles</button>
               <button class="btn-secondary small" type="button" data-edit-id="${obj.id}">Editar</button>
               <button class="btn-danger small" type="button" data-delete-id="${obj.id}">Eliminar</button>
             </div>
@@ -1606,7 +1643,13 @@
         renderObjectives();
       });
       document.querySelectorAll('[data-open-actions-objective]').forEach(btn => btn.onclick = () => openInitiativeActionsModal(btn.dataset.openActionsObjective, btn.dataset.openActionsActivity));
-      document.querySelectorAll('[data-view-id]').forEach(btn => btn.onclick = () => openDetailModal(btn.dataset.viewId));
+      document.querySelectorAll('[data-view-id]').forEach(btn => {
+        btn.onclick = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          openDetailModal(btn.getAttribute('data-view-id'));
+        };
+      });
       document.querySelectorAll('[data-edit-id]').forEach(btn => btn.onclick = () => startEdit(btn.dataset.editId));
       document.querySelectorAll('[data-delete-id]').forEach(btn => btn.onclick = () => deleteObjective(btn.dataset.deleteId));
     }
@@ -1616,7 +1659,7 @@
       indicatorModalForm.reset();
       state.indicatorModalMode = 'create';
       state.editingIndicatorIndex = null;
-      const obj = state.objectives.find(item => item.id === state.detailId);
+      const obj = state.objectives.find(item => sameId(item.id, state.detailId));
       if (obj?.leader) document.getElementById('modalIndicatorOwner').value = obj.leader;
       document.getElementById('modalIndicatorFrequency').value = 'Mensual';
       document.getElementById('modalIndicatorAction').value = 'Incrementar';
@@ -1629,7 +1672,7 @@
       resetIndicatorModal();
       state.indicatorModalMode = mode;
       state.editingIndicatorIndex = indicatorIndex;
-      const obj = state.objectives.find(item => item.id === state.detailId);
+      const obj = state.objectives.find(item => sameId(item.id, state.detailId));
       if (mode === 'edit' && obj && indicatorIndex !== null && obj.indicators[indicatorIndex]) {
         const indicator = obj.indicators[indicatorIndex];
         document.getElementById('indicatorModalTitle').textContent = 'Editar Indicador Cuantitativo';
@@ -1658,7 +1701,7 @@
     }
 
     function saveIndicatorFromModal(){
-      const obj = state.objectives.find(item => item.id === state.detailId);
+      const obj = state.objectives.find(item => sameId(item.id, state.detailId));
       if (!obj) return;
       const name = document.getElementById('modalIndicatorName').value.trim();
       if (!name) return alert('Escribe el nombre del indicador.');
@@ -1704,7 +1747,7 @@
     }
 
     function updateIndicatorCurrentValue(indicatorIndex, rawValue){
-      const obj = state.objectives.find(item => item.id === state.detailId);
+      const obj = state.objectives.find(item => sameId(item.id, state.detailId));
       if (!obj || !obj.indicators[indicatorIndex]) return;
       const indicator = obj.indicators[indicatorIndex];
       const parsed = Number(rawValue);
@@ -1730,7 +1773,7 @@
     }
 
     function hideIndicator(indicatorIndex){
-      const obj = state.objectives.find(item => item.id === state.detailId);
+      const obj = state.objectives.find(item => sameId(item.id, state.detailId));
       if (!obj || !obj.indicators[indicatorIndex]) return;
       const actor = askActionUser(obj.leader);
       if (!actor) return;
@@ -1743,7 +1786,7 @@
     }
 
     function recoverIndicator(indicatorIndex){
-      const obj = state.objectives.find(item => item.id === state.detailId);
+      const obj = state.objectives.find(item => sameId(item.id, state.detailId));
       if (!obj || !obj.indicators[indicatorIndex]) return;
       const actor = askActionUser(obj.leader);
       if (!actor) return;
@@ -1780,7 +1823,7 @@
     }
 
     function openMetaPlanModal(indicatorIndex){
-      const obj = state.objectives.find(item => item.id === state.detailId);
+      const obj = state.objectives.find(item => sameId(item.id, state.detailId));
       const indicator = obj?.indicators?.[indicatorIndex];
       if (!indicator) return;
       resetMetaPlanModal();
@@ -1800,7 +1843,7 @@
     }
 
     function saveMetaPlanFromModal(){
-      const obj = state.objectives.find(item => item.id === state.detailId);
+      const obj = state.objectives.find(item => sameId(item.id, state.detailId));
       const indicator = obj?.indicators?.[state.metaPlanIndicatorIndex];
       if (!indicator) return;
       const actor = askActionUser(obj.leader);
@@ -1817,7 +1860,7 @@
       activityModalForm.reset();
       state.activityModalMode = 'create';
       state.editingActivityIndex = null;
-      const obj = state.objectives.find(item => item.id === state.detailId);
+      const obj = state.objectives.find(item => sameId(item.id, state.detailId));
       if (obj?.leader) document.getElementById('modalActivityOwner').value = obj.leader;
       document.getElementById('modalActivityStatus').value = 'en progreso';
       document.getElementById('activityModalTitle').textContent = 'Nueva Iniciativa';
@@ -1829,7 +1872,7 @@
       resetActivityModal();
       state.activityModalMode = mode;
       state.editingActivityIndex = activityIndex;
-      const obj = state.objectives.find(item => item.id === state.detailId);
+      const obj = state.objectives.find(item => sameId(item.id, state.detailId));
       if (mode === 'edit' && obj && activityIndex !== null && obj.activities[activityIndex]) {
         const activity = obj.activities[activityIndex];
         document.getElementById('activityModalTitle').textContent = 'Editar Iniciativa';
@@ -1853,7 +1896,7 @@
     }
 
     function saveActivityFromModal(){
-      const obj = state.objectives.find(item => item.id === state.detailId);
+      const obj = state.objectives.find(item => sameId(item.id, state.detailId));
       if (!obj) return;
       const name = document.getElementById('modalActivityName').value.trim();
       if (!name) return alert('Escribe el nombre de la iniciativa.');
@@ -1886,7 +1929,7 @@
 
 
     function getActionContext(){
-      const obj = state.objectives.find(item => item.id === (state.actionObjectiveId || state.detailId));
+      const obj = state.objectives.find(item => sameId(item.id, (state.actionObjectiveId || state.detailId)));
       const activity = obj?.activities?.[state.actionActivityIndex];
       return { obj, activity };
     }
@@ -2011,16 +2054,25 @@
     }
 
     function openDetailModal(id){
-      state.detailId = id;
-      state.detailTab = 'comments';
-      state.detailIndicatorView = 'active';
-      const found = state.objectives.find(item => item.id === id);
-      if (!found) {
-        console.warn('[openDetailModal] Objetivo no encontrado con id:', id, '| IDs disponibles:', state.objectives.map(o=>o.id));
+      const obj = state.objectives.find(item => sameId(item.id, id));
+      if (!obj) {
+        console.warn('No se encontró objetivo para detalle:', id, state.objectives.map(item => item.id));
+        alert('No se pudo abrir el detalle del objetivo. Revisa que el objetivo tenga un ID válido.');
+        return;
       }
-      renderDetailModal();
-      detailModal.classList.add('open');
-      detailModal.setAttribute('aria-hidden', 'false');
+      try {
+        state.detailId = obj.id;
+        state.detailTab = 'comments';
+        state.detailIndicatorView = 'active';
+        renderDetailModal();
+        detailModal.classList.add('open');
+        detailModal.setAttribute('aria-hidden', 'false');
+      } catch (error) {
+        console.error('Error al abrir detalle del objetivo:', error);
+        detailContent.innerHTML = `<div class="detail-shell"><div class="detail-topbar"><div class="detail-title-row"><button class="icon-btn" type="button" onclick="closeDetailModal()">←</button><h2>${escapeHtml(obj.name || 'Detalle del objetivo')}</h2></div></div><div class="detail-panel"><h3>No se pudo renderizar el detalle completo</h3><div class="desc-text">El objetivo existe, pero algún dato guardado tiene un formato inválido. Error: ${escapeHtml(error.message || error)}</div><button class="btn-secondary" type="button" onclick="startEdit('${String(obj.id).replace(/'/g, "\\'")}')">Editar objetivo</button></div></div>`;
+        detailModal.classList.add('open');
+        detailModal.setAttribute('aria-hidden', 'false');
+      }
     }
 
     function closeDetailModal(){
@@ -2044,26 +2096,11 @@
     }
 
     function renderDetailModal(){
-      try {
-      const obj = state.objectives.find(item => item.id === state.detailId);
+      const obj = state.objectives.find(item => sameId(item.id, state.detailId));
       if (!obj){
         detailContent.innerHTML = '<div class="detail-shell"><div class="detail-panel">No se encontró el objetivo.</div></div>';
         return;
       }
-
-      // Defensive normalization: ensure all array fields exist (protects against old localStorage data)
-      if (!Array.isArray(obj.activities))     obj.activities     = [];
-      if (!Array.isArray(obj.indicators))     obj.indicators     = [];
-      if (!Array.isArray(obj.reminders))      obj.reminders      = [];
-      if (!Array.isArray(obj.checklist))      obj.checklist      = [];
-      if (!Array.isArray(obj.links))          obj.links          = [];
-      if (!Array.isArray(obj.attachments))    obj.attachments    = [];
-      if (!Array.isArray(obj.tags))           obj.tags           = [];
-      if (!Array.isArray(obj.areas))          obj.areas          = [];
-      if (!Array.isArray(obj.linkedProjects)) obj.linkedProjects = [];
-      if (!Array.isArray(obj.comments))       obj.comments       = [];
-      if (!Array.isArray(obj.history))        obj.history        = [];
-      if (!Array.isArray(obj.invited))        obj.invited        = [];
 
       const ql = calculateQualitativeProgress(obj.activities);
       const qt = calculateQuantitativeProgress(obj.indicators);
@@ -2171,7 +2208,7 @@
 
                 <div class="tab-pane ${state.detailTab === 'comments' ? 'active' : ''}">
                   <div class="comment-list">
-                    ${(obj.comments||[]).length ? (obj.comments||[]).map(buildCommentMarkup).join('') : '<div class="simple-card muted">Sin comentarios registrados.</div>'}
+                    ${obj.comments.length ? obj.comments.map(buildCommentMarkup).join('') : '<div class="simple-card muted">Sin comentarios registrados.</div>'}
                   </div>
                   <div class="comment-form">
                     <select id="newCommentAuthor" class="select">
@@ -2184,7 +2221,7 @@
 
                 <div class="tab-pane ${state.detailTab === 'history' ? 'active' : ''}">
                   <div class="history-list">
-                    ${(obj.history||[]).length ? (obj.history||[]).map(item => `<div class="history-card">${renderHistoryEntry(escapeHtml(item))}</div>`).join('') : '<div class="simple-card muted">Sin historial registrado.</div>'}
+                    ${obj.history.length ? obj.history.map(item => `<div class="history-card">${renderHistoryEntry(escapeHtml(item))}</div>`).join('') : '<div class="simple-card muted">Sin historial registrado.</div>'}
                   </div>
                 </div>
               </div>
@@ -2197,7 +2234,7 @@
                   <button class="btn-secondary small" type="button" id="detailAddActivityBtn">Agregar +</button>
                 </div>
                 <div class="activity-list-scroll">
-                  ${(obj.activities||[]).length ? (obj.activities||[]).map((item, index) => `<div class="activity-card"><div class="head"><span>${escapeHtml(item.name)}</span><div class="activity-header-right"><span>${Number(item.progress || 0)}%</span><button class="btn-secondary small btn-tight" type="button" data-edit-activity-index="${index}">Editar</button></div></div><div class="tiny-progress"><div style="width:${Number(item.progress || 0)}%; background:${getProgressColor(Number(item.progress || 0))};"></div></div><div class="activity-meta"><div><strong>Responsable:</strong> ${escapeHtml(item.owner || '—')}</div><div><strong>Estatus:</strong> ${escapeHtml(item.status || '—')}</div><div><strong>Fecha:</strong> ${formatDate(item.dueDate)}</div><div class="initiative-actions"><button class="btn-secondary small btn-tight" type="button" data-open-actions-detail-index="${index}">Asignar Acción</button><span>${(item.actions || []).length} acción(es)</span></div></div></div>`).join('') : '<div class="simple-card muted">Sin iniciativas registradas.</div>'}
+                  ${obj.activities.length ? obj.activities.map((item, index) => `<div class="activity-card"><div class="head"><span>${escapeHtml(item.name)}</span><div class="activity-header-right"><span>${Number(item.progress || 0)}%</span><button class="btn-secondary small btn-tight" type="button" data-edit-activity-index="${index}">Editar</button></div></div><div class="tiny-progress"><div style="width:${Number(item.progress || 0)}%; background:${getProgressColor(Number(item.progress || 0))};"></div></div><div class="activity-meta"><div><strong>Responsable:</strong> ${escapeHtml(item.owner || '—')}</div><div><strong>Estatus:</strong> ${escapeHtml(item.status || '—')}</div><div><strong>Fecha:</strong> ${formatDate(item.dueDate)}</div><div class="initiative-actions"><button class="btn-secondary small btn-tight" type="button" data-open-actions-detail-index="${index}">Asignar Acción</button><span>${(item.actions || []).length} acción(es)</span></div></div></div>`).join('') : '<div class="simple-card muted">Sin iniciativas registradas.</div>'}
                 </div>
               </div>
 
@@ -2207,7 +2244,7 @@
                   <button class="btn-secondary small" type="button" id="toggleReminderBoxBtn">Agregar</button>
                 </div>
                 <div class="section-mini-list">
-                  ${(obj.reminders||[]).length ? (obj.reminders||[]).map((item, index) => `<div class="mini-item"><div class="mini-item-head"><span class="mini-item-title">${escapeHtml(item.text)}</span><button class="btn-light small btn-tight" type="button" data-remove-reminder-index="${index}">Quitar</button></div><div class="mini-item-sub">${item.dueDate ? `Fecha: ${formatDate(item.dueDate)}` : 'Sin fecha'}${item.dueTime ? ` · Hora: ${formatTime(item.dueTime)}` : ''}</div></div>`).join('') : '<div class="muted">No hay recordatorios</div>'}
+                  ${obj.reminders.length ? obj.reminders.map((item, index) => `<div class="mini-item"><div class="mini-item-head"><span class="mini-item-title">${escapeHtml(item.text)}</span><button class="btn-light small btn-tight" type="button" data-remove-reminder-index="${index}">Quitar</button></div><div class="mini-item-sub">${item.dueDate ? `Fecha: ${formatDate(item.dueDate)}` : 'Sin fecha'}${item.dueTime ? ` · Hora: ${formatTime(item.dueTime)}` : ''}</div></div>`).join('') : '<div class="muted">No hay recordatorios</div>'}
                 </div>
                 <div class="inline-add stack" id="inlineReminderBox">
                   <input id="inlineReminderText" class="input" type="text" placeholder="Escribe un recordatorio" />
@@ -2225,7 +2262,7 @@
                   <div class="tag-tools"><button class="icon-btn plus-mini" type="button" id="toggleInlineTagBtn">+</button></div>
                 </div>
                 <div class="chips" id="detailTagsWrap">
-                  ${(obj.tags||[]).length ? (obj.tags||[]).map((tag, index) => `<span class="tag">${escapeHtml(tag)} <button type="button" data-remove-detail-tag="${index}">×</button></span>`).join('') : '<span class="muted">Sin etiquetas.</span>'}
+                  ${obj.tags.length ? obj.tags.map((tag, index) => `<span class="tag">${escapeHtml(tag)} <button type="button" data-remove-detail-tag="${index}">×</button></span>`).join('') : '<span class="muted">Sin etiquetas.</span>'}
                 </div>
                 <div class="inline-add" id="inlineTagBox">
                   <input id="inlineTagInput" class="input" type="text" placeholder="Nueva etiqueta" />
@@ -2239,7 +2276,7 @@
                   <button class="btn-secondary small" type="button" id="toggleChecklistBoxBtn">Agregar</button>
                 </div>
                 <div>
-                  ${(obj.checklist||[]).length ? `<div class="check-header"><span></span><span>Punto</span><span>Fecha compromiso</span><span></span></div>` + (obj.checklist||[]).map((item, index) => `<div class="check-row ${item.done ? 'done' : ''}"><input type="checkbox" ${item.done ? 'checked' : ''} data-toggle-check-index="${index}" /><input class="input check-edit-text" type="text" value="${escapeHtml(item.text)}" data-edit-check-text="${index}" /><input class="input check-edit-date" type="date" value="${escapeHtml(item.dueDate || '')}" data-edit-check-date="${index}" /><button class="btn-light small btn-tight" type="button" data-remove-check-index="${index}">Quitar</button></div>`).join('') : '<div class="muted">Sin elementos en check list</div>'}
+                  ${obj.checklist.length ? `<div class="check-header"><span></span><span>Punto</span><span>Fecha compromiso</span><span></span></div>` + obj.checklist.map((item, index) => `<div class="check-row ${item.done ? 'done' : ''}"><input type="checkbox" ${item.done ? 'checked' : ''} data-toggle-check-index="${index}" /><input class="input check-edit-text" type="text" value="${escapeHtml(item.text)}" data-edit-check-text="${index}" /><input class="input check-edit-date" type="date" value="${escapeHtml(item.dueDate || '')}" data-edit-check-date="${index}" /><button class="btn-light small btn-tight" type="button" data-remove-check-index="${index}">Quitar</button></div>`).join('') : '<div class="muted">Sin elementos en check list</div>'}
                 </div>
                 <div class="inline-add stack" id="inlineChecklistBox">
                   <input id="inlineChecklistText" class="input" type="text" placeholder="Nuevo elemento" />
@@ -2254,7 +2291,7 @@
                   <button class="btn-secondary small" type="button" id="toggleLinkBoxBtn">Agregar enlace</button>
                 </div>
                 <div class="section-mini-list">
-                  ${(obj.links||[]).length ? (obj.links||[]).map((item, index) => `<div class="mini-item"><div class="mini-item-head"><a class="link-anchor" href="${escapeHtml(item.url || '#')}" target="_blank" rel="noopener noreferrer">${escapeHtml(item.title || item.url || 'Enlace')}</a><button class="btn-light small btn-tight" type="button" data-remove-link-index="${index}">Quitar</button></div><div class="mini-item-sub">${escapeHtml(item.url || '')}</div></div>`).join('') : '<div class="muted">Sin enlaces</div>'}
+                  ${obj.links.length ? obj.links.map((item, index) => `<div class="mini-item"><div class="mini-item-head"><a class="link-anchor" href="${escapeHtml(item.url || '#')}" target="_blank" rel="noopener noreferrer">${escapeHtml(item.title || item.url || 'Enlace')}</a><button class="btn-light small btn-tight" type="button" data-remove-link-index="${index}">Quitar</button></div><div class="mini-item-sub">${escapeHtml(item.url || '')}</div></div>`).join('') : '<div class="muted">Sin enlaces</div>'}
                 </div>
                 <div class="inline-add stack" id="inlineLinkBox">
                   <input id="inlineLinkTitle" class="input" type="text" placeholder="Nombre del enlace" />
@@ -2268,7 +2305,7 @@
                   <h3 style="margin:0">Áreas</h3>
                   <div class="tag-tools"><button class="icon-btn plus-mini" type="button" id="toggleInlineAreaBtn">+</button></div>
                 </div>
-                <div class="chips">${(obj.areas||[]).length ? (obj.areas||[]).map((area, index) => `<span class="tag">${escapeHtml(area)} <button type="button" data-remove-area-index="${index}">×</button></span>`).join('') : '<span class="muted">Sin registros.</span>'}</div>
+                <div class="chips">${obj.areas.length ? obj.areas.map((area, index) => `<span class="tag">${escapeHtml(area)} <button type="button" data-remove-area-index="${index}">×</button></span>`).join('') : '<span class="muted">Sin registros.</span>'}</div>
                 <div class="inline-add" id="inlineAreaBox">
                   <input id="inlineAreaInput" class="input" type="text" placeholder="Nueva área" />
                   <button class="btn-secondary" type="button" id="saveInlineAreaBtn">Agregar</button>
@@ -2280,7 +2317,7 @@
                   <h3 style="margin:0">Ligado a</h3>
                   <div class="tag-tools"><button class="icon-btn plus-mini" type="button" id="toggleInlineProjectBtn">+</button></div>
                 </div>
-                <div class="chips">${(obj.linkedProjects||[]).length ? (obj.linkedProjects||[]).map((project, index) => `<span class="tag">${escapeHtml(project)} <button type="button" data-remove-project-index="${index}">×</button></span>`).join('') : '<span class="muted">Sin proyectos ligados.</span>'}</div>
+                <div class="chips">${obj.linkedProjects.length ? obj.linkedProjects.map((project, index) => `<span class="tag">${escapeHtml(project)} <button type="button" data-remove-project-index="${index}">×</button></span>`).join('') : '<span class="muted">Sin proyectos ligados.</span>'}</div>
                 <div class="inline-add" id="inlineProjectBox">
                   <input id="inlineProjectInput" class="input" type="text" placeholder="Nuevo proyecto ligado" />
                   <button class="btn-secondary" type="button" id="saveInlineProjectBtn">Agregar</button>
@@ -2293,7 +2330,7 @@
                   <button class="btn-secondary small" type="button" id="toggleAttachmentBoxBtn">Adjuntar archivos</button>
                 </div>
                 <div class="section-mini-list">
-                  ${(obj.attachments||[]).length ? (obj.attachments||[]).map((item, index) => `<div class="mini-item"><div class="mini-item-head"><span class="mini-item-title">${escapeHtml(item.name)}</span><div class="mini-item-actions">${item.dataUrl ? `<a class="btn-secondary small btn-tight attachment-anchor-btn" href="${item.dataUrl}" target="_blank" rel="noopener noreferrer">Ver</a><a class="btn-light small btn-tight attachment-anchor-btn" href="${item.dataUrl}" download="${escapeHtml(item.name)}">Descargar</a>` : ''}<button class="btn-light small btn-tight" type="button" data-remove-attachment-index="${index}">Quitar</button></div></div><div class="mini-item-sub">${formatFileSize(item.size)} · ${formatDateTime(item.addedAt)}</div></div>`).join('') : '<div class="muted">Sin archivos adjuntos</div>'}
+                  ${obj.attachments.length ? obj.attachments.map((item, index) => `<div class="mini-item"><div class="mini-item-head"><span class="mini-item-title">${escapeHtml(item.name)}</span><div class="mini-item-actions">${item.dataUrl ? `<a class="btn-secondary small btn-tight attachment-anchor-btn" href="${item.dataUrl}" target="_blank" rel="noopener noreferrer">Ver</a><a class="btn-light small btn-tight attachment-anchor-btn" href="${item.dataUrl}" download="${escapeHtml(item.name)}">Descargar</a>` : ''}<button class="btn-light small btn-tight" type="button" data-remove-attachment-index="${index}">Quitar</button></div></div><div class="mini-item-sub">${formatFileSize(item.size)} · ${formatDateTime(item.addedAt)}</div></div>`).join('') : '<div class="muted">Sin archivos adjuntos</div>'}
                 </div>
                 <div class="inline-add stack" id="inlineAttachmentBox">
                   <div class="file-upload-wrap">
@@ -2432,10 +2469,6 @@
       const saveInlineAttachmentBtn = document.getElementById('saveInlineAttachmentBtn');
       if (saveInlineAttachmentBtn) saveInlineAttachmentBtn.onclick = addAttachmentsFromDetail;
       detailContent.querySelectorAll('[data-remove-attachment-index]').forEach(btn => btn.onclick = () => removeAttachmentFromDetail(Number(btn.dataset.removeAttachmentIndex)));
-      } catch(err) {
-        console.error('[renderDetailModal] Error al renderizar el detalle del objetivo:', err);
-        detailContent.innerHTML = '<div class="detail-shell"><div class="detail-panel" style="color:var(--red);padding:24px"><strong>Error al cargar el detalle.</strong><br><br>Detalle técnico: ' + err.message + '</div></div>';
-      }
     }
 
     function openValueHistoryModal(indicatorIndex){
@@ -2452,7 +2485,7 @@
     }
 
     function renderValueHistoryModal(){
-      const obj = state.objectives.find(item => item.id === state.detailId);
+      const obj = state.objectives.find(item => sameId(item.id, state.detailId));
       const indicator = obj?.indicators?.[state.valueHistoryModalIndicatorIndex];
       document.getElementById('valueHistorySubtitle').textContent = `Indicador: ${indicator ? indicator.name : '—'}`;
       if (!indicator) {
@@ -2487,7 +2520,7 @@
     }
 
     function addCommentFromDetail(){
-      const obj = state.objectives.find(item => item.id === state.detailId);
+      const obj = state.objectives.find(item => sameId(item.id, state.detailId));
       if (!obj) return;
       const author = document.getElementById('newCommentAuthor').value.trim();
       const text = document.getElementById('newCommentText').value.trim();
@@ -2500,7 +2533,7 @@
     }
 
     function addInlineTagToDetail(){
-      const obj = state.objectives.find(item => item.id === state.detailId);
+      const obj = state.objectives.find(item => sameId(item.id, state.detailId));
       if (!obj) return;
       const input = document.getElementById('inlineTagInput');
       const value = input.value.trim();
@@ -2519,7 +2552,7 @@
     }
 
     function removeDetailTag(index){
-      const obj = state.objectives.find(item => item.id === state.detailId);
+      const obj = state.objectives.find(item => sameId(item.id, state.detailId));
       if (!obj) return;
       const removed = obj.tags.splice(index, 1)[0];
       if (removed) {
@@ -2533,7 +2566,7 @@
     }
 
     function addAreaFromDetail(){
-      const obj = state.objectives.find(item => item.id === state.detailId);
+      const obj = state.objectives.find(item => sameId(item.id, state.detailId));
       if (!obj) return;
       const input = document.getElementById('inlineAreaInput');
       const value = input.value.trim();
@@ -2552,7 +2585,7 @@
     }
 
     function removeAreaFromDetail(index){
-      const obj = state.objectives.find(item => item.id === state.detailId);
+      const obj = state.objectives.find(item => sameId(item.id, state.detailId));
       if (!obj) return;
       const removed = obj.areas.splice(index, 1)[0];
       if (removed) {
@@ -2566,7 +2599,7 @@
     }
 
     function addProjectFromDetail(){
-      const obj = state.objectives.find(item => item.id === state.detailId);
+      const obj = state.objectives.find(item => sameId(item.id, state.detailId));
       if (!obj) return;
       const input = document.getElementById('inlineProjectInput');
       const value = input.value.trim();
@@ -2585,7 +2618,7 @@
     }
 
     function removeProjectFromDetail(index){
-      const obj = state.objectives.find(item => item.id === state.detailId);
+      const obj = state.objectives.find(item => sameId(item.id, state.detailId));
       if (!obj) return;
       const removed = obj.linkedProjects.splice(index, 1)[0];
       if (removed) {
@@ -2599,7 +2632,7 @@
     }
 
     function addReminderFromDetail(){
-      const obj = state.objectives.find(item => item.id === state.detailId);
+      const obj = state.objectives.find(item => sameId(item.id, state.detailId));
       if (!obj) return;
       const textValue = document.getElementById('inlineReminderText').value.trim();
       const dueDate = document.getElementById('inlineReminderDate').value;
@@ -2615,7 +2648,7 @@
     }
 
     function removeReminderFromDetail(index){
-      const obj = state.objectives.find(item => item.id === state.detailId);
+      const obj = state.objectives.find(item => sameId(item.id, state.detailId));
       if (!obj) return;
       const removed = obj.reminders.splice(index, 1)[0];
       if (removed) {
@@ -2629,7 +2662,7 @@
     }
 
     function addChecklistItemFromDetail(){
-      const obj = state.objectives.find(item => item.id === state.detailId);
+      const obj = state.objectives.find(item => sameId(item.id, state.detailId));
       if (!obj) return;
       const textValue = document.getElementById('inlineChecklistText').value.trim();
       const dueDate = document.getElementById('inlineChecklistDate').value;
@@ -2644,7 +2677,7 @@
     }
 
     function toggleChecklistItem(index, checked){
-      const obj = state.objectives.find(item => item.id === state.detailId);
+      const obj = state.objectives.find(item => sameId(item.id, state.detailId));
       if (!obj || !obj.checklist[index]) return;
       obj.checklist[index].done = Boolean(checked);
       const actor = askActionUser(obj.leader);
@@ -2656,7 +2689,7 @@
     }
 
     function editChecklistItemText(index, value){
-      const obj = state.objectives.find(item => item.id === state.detailId);
+      const obj = state.objectives.find(item => sameId(item.id, state.detailId));
       if (!obj || !obj.checklist[index]) return;
       const textValue = String(value || '').trim();
       if (!textValue) {
@@ -2677,7 +2710,7 @@
     }
 
     function editChecklistItemDate(index, value){
-      const obj = state.objectives.find(item => item.id === state.detailId);
+      const obj = state.objectives.find(item => sameId(item.id, state.detailId));
       if (!obj || !obj.checklist[index]) return;
       const previous = obj.checklist[index].dueDate || '';
       obj.checklist[index].dueDate = value || '';
@@ -2692,7 +2725,7 @@
     }
 
     function removeChecklistItem(index){
-      const obj = state.objectives.find(item => item.id === state.detailId);
+      const obj = state.objectives.find(item => sameId(item.id, state.detailId));
       if (!obj) return;
       const removed = obj.checklist.splice(index, 1)[0];
       if (removed) {
@@ -2706,7 +2739,7 @@
     }
 
     function addLinkFromDetail(){
-      const obj = state.objectives.find(item => item.id === state.detailId);
+      const obj = state.objectives.find(item => sameId(item.id, state.detailId));
       if (!obj) return;
       const title = document.getElementById('inlineLinkTitle').value.trim();
       const url = document.getElementById('inlineLinkUrl').value.trim();
@@ -2721,7 +2754,7 @@
     }
 
     function removeLinkFromDetail(index){
-      const obj = state.objectives.find(item => item.id === state.detailId);
+      const obj = state.objectives.find(item => sameId(item.id, state.detailId));
       if (!obj) return;
       const removed = obj.links.splice(index, 1)[0];
       if (removed) {
@@ -2735,7 +2768,7 @@
     }
 
     async function addAttachmentsFromDetail(){
-      const obj = state.objectives.find(item => item.id === state.detailId);
+      const obj = state.objectives.find(item => sameId(item.id, state.detailId));
       if (!obj) return;
       const input = document.getElementById('inlineAttachmentInput');
       const files = Array.from(input.files || []);
@@ -2761,7 +2794,7 @@
     }
 
     function removeAttachmentFromDetail(index){
-      const obj = state.objectives.find(item => item.id === state.detailId);
+      const obj = state.objectives.find(item => sameId(item.id, state.detailId));
       if (!obj) return;
       const removed = obj.attachments.splice(index, 1)[0];
       if (removed) {
