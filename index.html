@@ -942,9 +942,13 @@
     const initiativeActionsContent = document.getElementById('initiativeActionsContent');
     const actionDetailModal = document.getElementById('actionDetailModal');
 
-    // Guarda una copia ya normalizada de los datos cargados para evitar que datos viejos/importados rompan el detalle.
-    try { persistObjectives(); persistPlannings(); } catch(e) { console.warn('No se pudo normalizar localStorage al inicio:', e); }
-
+    document.addEventListener('click', (event) => {
+      const detailButton = event.target.closest('.js-detail-btn[data-detail-objective-id]');
+      if (!detailButton) return;
+      event.preventDefault();
+      event.stopPropagation();
+      openObjectiveDetailFromButton(detailButton);
+    }, true);
 
     function normalizeComment(comment){
       if (typeof comment === 'string') return { author:'Sistema', text:comment, date:new Date().toISOString().slice(0,10) };
@@ -968,43 +972,45 @@
       };
     }
 
+    function isPlainObject(value){
+      return value !== null && typeof value === 'object' && !Array.isArray(value);
+    }
 
+    function toArray(value){
+      if (Array.isArray(value)) return value;
+      if (value === null || value === undefined || value === '') return [];
+      if (typeof value === 'string') {
+        return value.split(/[;,\n]+/).map(item => item.trim()).filter(Boolean);
+      }
+      if (isPlainObject(value)) return Object.values(value);
+      return [value];
+    }
 
+    function toTextArray(value){
+      return toArray(value).map(item => {
+        if (item === null || item === undefined) return '';
+        if (isPlainObject(item)) return item.name || item.title || item.text || item.label || item.value || item.email || '';
+        return String(item);
+      }).map(item => String(item).trim()).filter(Boolean);
+    }
 
     function toObjectArray(value){
-      if (Array.isArray(value)) return value.filter(Boolean);
-      if (value && typeof value === 'object') return Object.values(value).filter(item => item && typeof item === 'object');
-      return [];
+      return toArray(value).map(item => {
+        if (isPlainObject(item)) return item;
+        const text = String(item ?? '').trim();
+        return text ? { name: text } : null;
+      }).filter(Boolean);
     }
 
-    function normalizeTextList(value){
-      if (Array.isArray(value)) {
-        return value.map(item => {
-          if (item && typeof item === 'object') return item.name || item.title || item.text || item.label || item.value || '';
-          return item;
-        }).map(item => String(item || '').trim()).filter(Boolean);
-      }
-
-      if (value && typeof value === 'object') {
-        return Object.values(value).map(item => {
-          if (item && typeof item === 'object') return item.name || item.title || item.text || item.label || item.value || '';
-          return item;
-        }).map(item => String(item || '').trim()).filter(Boolean);
-      }
-
-      if (typeof value === 'string') {
-        const raw = value.trim();
-        if (!raw) return [];
-        if ((raw.startsWith('[') && raw.endsWith(']')) || (raw.startsWith('{') && raw.endsWith('}'))) {
-          try { return normalizeTextList(JSON.parse(raw)); } catch(e) {}
-        }
-        return raw.split(/[;,\n|]+/).map(item => item.trim()).filter(Boolean);
-      }
-
-      return [];
+    function numberOrZero(value){
+      const n = Number(value);
+      return Number.isFinite(n) ? n : 0;
     }
+
+
 
     function normalizeInitiativeAction(action = {}){
+      action = isPlainObject(action) ? action : { title: String(action || '') };
       return {
         id: action.id || crypto.randomUUID(),
         title: action.title || action.name || '',
@@ -1013,86 +1019,92 @@
         detail: action.detail || action.description || '',
         status: action.status || 'Por hacer',
         createdBy: action.createdBy || '',
-        invited: Array.isArray(action.invited) ? action.invited : (typeof action.invited === 'string' ? action.invited.split(',').map(x=>x.trim()).filter(Boolean) : []),
+        invited: toTextArray(action.invited),
         startDate: action.startDate || '',
-        spent: Number(action.spent || 0),
-        budget: Number(action.budget || 0),
+        spent: numberOrZero(action.spent),
+        budget: numberOrZero(action.budget),
         timeInvested: action.timeInvested || '',
-        reminders: Array.isArray(action.reminders) ? action.reminders : [],
-        tags: Array.isArray(action.tags) ? action.tags : [],
-        checklist: Array.isArray(action.checklist) ? action.checklist : [],
-        links: Array.isArray(action.links) ? action.links : [],
-        attachments: Array.isArray(action.attachments) ? action.attachments : [],
-        comment: action.comment || '',
-        history: Array.isArray(action.history) ? action.history : []
-      };
-    }
-
-    function normalizeObjective(obj){
-      const invited = normalizeTextList(obj.invited || obj.involved || []);
-      const indicatorSource = toObjectArray(obj.indicators);
-      const activities = toObjectArray(obj.activities || obj.initiatives || []);
-      return {
-        id: obj.id || crypto.randomUUID(),
-        planningId: obj.planningId || 'plan_demo_2026',
-        name: obj.name || '',
-        description: obj.description || '',
-        startDate: obj.startDate || '',
-        endDate: obj.endDate || '',
-        leader: obj.leader || '',
-        createdBy: obj.createdBy || obj.leader || 'Sistema',
-        invited,
-        indicators: indicatorSource.map(ind => ({
-          name: ind.name || '',
-          action: ind.action || 'Incrementar',
-          unit: ind.unit || '',
-          initialValue: Number(ind.initialValue ?? ind.initial ?? 0),
-          target: Number(ind.target ?? 0),
-          current: Number(ind.current ?? 0),
-          frequency: ind.frequency || 'Mensual',
-          owner: ind.owner || '',
-          hidden: Boolean(ind.hidden),
-          valueHistory: Array.isArray(ind.valueHistory) ? ind.valueHistory.map(entry => normalizeValueHistoryEntry(entry, ind.current ?? 0)) : [],
-          metaPlan: Array.isArray(ind.metaPlan) ? ind.metaPlan.map(entry => normalizeMetaPlanEntry(entry, ind.target ?? 0)) : []
-        })),
-        activities: activities.map(act => ({
-          name: act.name || '',
-          owner: act.owner || '',
-          dueDate: act.dueDate || '',
-          status: act.status || 'pendiente',
-          progress: Number(act.progress ?? 0),
-          actions: Array.isArray(act.actions) ? act.actions.map(normalizeInitiativeAction) : []
-        })),
-        reminders: Array.isArray(obj.reminders) ? obj.reminders.map(item => ({
-          text: item?.text || item?.title || '',
-          dueDate: item?.dueDate || item?.date || '',
-          dueTime: item?.dueTime || item?.time || ''
-        })).filter(item => item.text) : [],
-        checklist: Array.isArray(obj.checklist) ? obj.checklist.map(item => ({
-          text: item?.text || item?.label || '',
-          dueDate: item?.dueDate || item?.date || item?.commitmentDate || '',
-          done: Boolean(item?.done)
-        })).filter(item => item.text) : [],
-        links: Array.isArray(obj.links) ? obj.links.map(item => ({
-          title: item?.title || item?.name || item?.url || '',
-          url: item?.url || ''
-        })).filter(item => item.title || item.url) : [],
-        attachments: Array.isArray(obj.attachments) ? obj.attachments.map(item => ({
+        reminders: toTextArray(action.reminders),
+        tags: toTextArray(action.tags),
+        checklist: toTextArray(action.checklist),
+        links: toTextArray(action.links),
+        attachments: toObjectArray(action.attachments).map(item => ({
           name: item?.name || item?.fileName || 'Archivo',
-          size: Number(item?.size || 0),
+          size: numberOrZero(item?.size),
           type: item?.type || item?.mimeType || '',
           dataUrl: item?.dataUrl || item?.url || '',
           addedAt: item?.addedAt || item?.date || new Date().toISOString()
-        })) : [],
-        tags: normalizeTextList(obj.tags),
-        areas: normalizeTextList(obj.areas),
-        linkedProjects: normalizeTextList(obj.linkedProjects),
-        status: obj.status || 'activo',
-        comments: Array.isArray(obj.comments) ? obj.comments.map(normalizeComment).filter(c=>c.text) : [],
-        history: Array.isArray(obj.history) ? obj.history : []
+        })),
+        comment: action.comment || '',
+        history: toTextArray(action.history)
       };
     }
 
+    function normalizeObjective(obj = {}){
+      obj = isPlainObject(obj) ? obj : {};
+      const invited = toTextArray(obj.invited || obj.involved || obj.guests || []);
+      const activities = toObjectArray(obj.activities || obj.initiatives || []);
+      const indicators = toObjectArray(obj.indicators || []);
+      return {
+        id: obj.id || crypto.randomUUID(),
+        planningId: obj.planningId || 'plan_demo_2026',
+        name: obj.name || obj.title || '',
+        description: obj.description || '',
+        startDate: obj.startDate || obj.fechaInicio || '',
+        endDate: obj.endDate || obj.fechaCompromiso || obj.dueDate || '',
+        leader: obj.leader || obj.owner || '',
+        createdBy: obj.createdBy || obj.creator || obj.leader || obj.owner || 'Sistema',
+        invited,
+        indicators: indicators.map(ind => ({
+          name: ind.name || ind.title || '',
+          action: ind.action || 'Incrementar',
+          unit: ind.unit || ind.unitMeasure || '',
+          initialValue: numberOrZero(ind.initialValue ?? ind.initial),
+          target: numberOrZero(ind.target),
+          current: numberOrZero(ind.current),
+          frequency: ind.frequency || 'Mensual',
+          owner: ind.owner || ind.responsible || '',
+          hidden: Boolean(ind.hidden),
+          valueHistory: toObjectArray(ind.valueHistory).map(entry => normalizeValueHistoryEntry(entry, ind.current ?? 0)),
+          metaPlan: toObjectArray(ind.metaPlan).map(entry => normalizeMetaPlanEntry(entry, ind.target ?? 0))
+        })).filter(ind => ind.name),
+        activities: activities.map(act => ({
+          name: act.name || act.title || '',
+          owner: act.owner || act.responsible || '',
+          dueDate: act.dueDate || act.date || '',
+          status: act.status || 'pendiente',
+          progress: numberOrZero(act.progress),
+          actions: toObjectArray(act.actions).map(normalizeInitiativeAction)
+        })).filter(act => act.name),
+        reminders: toObjectArray(obj.reminders).map(item => ({
+          text: item?.text || item?.title || item?.name || '',
+          dueDate: item?.dueDate || item?.date || '',
+          dueTime: item?.dueTime || item?.time || ''
+        })).filter(item => item.text),
+        checklist: toObjectArray(obj.checklist).map(item => ({
+          text: item?.text || item?.label || item?.name || '',
+          dueDate: item?.dueDate || item?.date || item?.commitmentDate || '',
+          done: Boolean(item?.done)
+        })).filter(item => item.text),
+        links: toObjectArray(obj.links).map(item => ({
+          title: item?.title || item?.name || item?.url || '',
+          url: item?.url || ''
+        })).filter(item => item.title || item.url),
+        attachments: toObjectArray(obj.attachments).map(item => ({
+          name: item?.name || item?.fileName || 'Archivo',
+          size: numberOrZero(item?.size),
+          type: item?.type || item?.mimeType || '',
+          dataUrl: item?.dataUrl || item?.url || '',
+          addedAt: item?.addedAt || item?.date || new Date().toISOString()
+        })),
+        tags: toTextArray(obj.tags),
+        areas: toTextArray(obj.areas),
+        linkedProjects: toTextArray(obj.linkedProjects),
+        status: obj.status || 'activo',
+        comments: toObjectArray(obj.comments).map(normalizeComment).filter(c => c.text),
+        history: toTextArray(obj.history)
+      };
+    }
 
     function normalizePlanning(plan){
       return {
@@ -1123,7 +1135,7 @@
     function persistPlannings(){ localStorage.setItem(PLANNING_SAVE_KEY, JSON.stringify(state.plannings)); }
 
     function getCurrentPlanning(){
-      return state.plannings.find(plan => sameId(plan.id, state.currentPlanningId)) || null;
+      return state.plannings.find(plan => plan.id === state.currentPlanningId) || null;
     }
 
     function loadObjectives(){
@@ -1139,7 +1151,6 @@
     }
 
     function persistObjectives(){ localStorage.setItem(SAVE_KEY, JSON.stringify(state.objectives)); }
-    function sameId(a, b){ return String(a) === String(b); }
     function formatDate(dateString){ if (!dateString) return '—'; const date = new Date(dateString + 'T00:00:00'); return new Intl.DateTimeFormat('es-MX', { day:'2-digit', month:'short', year:'numeric' }).format(date); }
     function statusLabel(status){ return ({activo:'Activo', en_riesgo:'En riesgo', pausado:'Pausado', cumplido:'Cumplido'})[status] || status; }
     function getProgressColor(value){ if (value >= 80) return 'var(--green)'; if (value >= 50) return 'var(--yellow)'; return 'var(--red)'; }
@@ -1191,9 +1202,10 @@
       return Math.round(vals.reduce((a,b)=>a+b,0) / vals.length);
     }
     function calculateQualitativeProgress(activities=[]){ if (!activities.length) return 0; const vals = activities.map(item => Math.max(0, Math.min(100, Number(item.progress || 0)))); return Math.round(vals.reduce((a,b)=>a+b,0) / vals.length); }
-    function uniqueParticipants(obj){ return Array.from(new Set([obj.createdBy, obj.leader, ...normalizeTextList(obj.invited)].filter(Boolean))); }
+    function uniqueParticipants(obj){ return Array.from(new Set([obj.createdBy, obj.leader, ...toTextArray(obj.invited)].filter(Boolean))); }
     function formatDateTime(date = new Date()){
-      const value = date instanceof Date ? date : new Date(date);
+      const value = parseFlexibleDate(date);
+      if (!value) return '—';
       return new Intl.DateTimeFormat('es-MX', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' }).format(value);
     }
     function formatTime(timeString){
@@ -1240,7 +1252,7 @@
     }
     function escapeHtml(text){ const div = document.createElement('div'); div.textContent = String(text ?? ''); return div.innerHTML; }
     function clearMultiSelect(id){ Array.from(document.getElementById(id).options).forEach(opt => opt.selected = false); }
-    function setMultiSelectValues(id, values=[]){ const set = new Set(values); Array.from(document.getElementById(id).options).forEach(opt => { const val = opt.value || opt.textContent; opt.selected = set.has(val); }); }
+    function setMultiSelectValues(id, values=[]){ const set = new Set(toTextArray(values)); Array.from(document.getElementById(id).options).forEach(opt => { const val = opt.value || opt.textContent; opt.selected = set.has(val); }); }
     function getMultiSelectValues(selectEl){ return Array.from(selectEl.selectedOptions).map(opt => opt.value || opt.textContent).filter(Boolean); }
 
     function addIndicatorRow(data={}){
@@ -1339,7 +1351,7 @@
       if (!name) return alert('Ingresa el Nombre del Objetivo (KPI).');
       if (!leader) return alert('Selecciona un Líder Responsable.');
 
-      const previous = state.editingId ? state.objectives.find(obj => sameId(obj.id, state.editingId)) : null;
+      const previous = state.editingId ? state.objectives.find(obj => obj.id === state.editingId) : null;
       const actor = askActionUser(leader);
       if (!actor) return;
       const objective = normalizeObjective({
@@ -1367,7 +1379,7 @@
       });
 
       if (state.editingId){
-        const index = state.objectives.findIndex(obj => sameId(obj.id, state.editingId));
+        const index = state.objectives.findIndex(obj => obj.id === state.editingId);
         if (index !== -1) state.objectives[index] = objective;
       } else {
         state.objectives.unshift(objective);
@@ -1380,7 +1392,7 @@
     }
 
     function startEdit(id){
-      const obj = state.objectives.find(item => sameId(item.id, id));
+      const obj = state.objectives.find(item => item.id === id);
       if (!obj) return;
       resetForm();
       state.editingId = id;
@@ -1391,9 +1403,9 @@
       document.getElementById('endDate').value = obj.endDate;
       document.getElementById('leader').value = obj.leader;
       document.getElementById('objectiveStatus').value = obj.status;
-      setMultiSelectValues('invited', normalizeTextList(obj.invited));
-      setMultiSelectValues('areas', normalizeTextList(obj.areas));
-      setMultiSelectValues('linkedProjects', normalizeTextList(obj.linkedProjects));
+      setMultiSelectValues('invited', obj.invited);
+      setMultiSelectValues('areas', obj.areas);
+      setMultiSelectValues('linkedProjects', obj.linkedProjects);
       indicatorsList.innerHTML = '';
       activitiesList.innerHTML = '';
       (obj.indicators.length ? obj.indicators : [{}]).forEach(addIndicatorRow);
@@ -1404,13 +1416,13 @@
     }
 
     function deleteObjective(id){
-      const obj = state.objectives.find(item => sameId(item.id, id));
+      const obj = state.objectives.find(item => item.id === id);
       if (!obj) return;
       if (!confirm(`¿Seguro que deseas eliminar el objetivo "${obj.name}"?`)) return;
-      state.objectives = state.objectives.filter(item => item.id !== id);
+      state.objectives = state.objectives.filter(item => !sameId(item.id, id));
       persistObjectives();
       renderObjectives();
-      if (sameId(state.detailId, id)) closeDetailModal();
+      if (state.detailId === id) closeDetailModal();
     }
 
 
@@ -1440,7 +1452,7 @@
     function openPlanningModal(mode = 'create', planningId = null){
       resetPlanningForm();
       if (mode === 'edit') {
-        const plan = state.plannings.find(item => sameId(item.id, planningId));
+        const plan = state.plannings.find(item => item.id === planningId);
         if (!plan) return;
         state.editingPlanningId = planningId;
         document.getElementById('planningModalTitle').textContent = 'Editar Planeación';
@@ -1469,7 +1481,7 @@
       const actor = askActionUser(document.getElementById('planningOwner').value.trim() || 'Sistema');
       if (!actor) return;
 
-      const previous = state.editingPlanningId ? state.plannings.find(item => sameId(item.id, state.editingPlanningId)) : null;
+      const previous = state.editingPlanningId ? state.plannings.find(item => item.id === state.editingPlanningId) : null;
       const planning = normalizePlanning({
         id: previous?.id || crypto.randomUUID(),
         name,
@@ -1485,7 +1497,7 @@
       planning.history.unshift(`${previous ? 'Planeación actualizada' : 'Planeación creada'} por ${actor} el ${formatDateTime()}.`);
 
       if (previous) {
-        const index = state.plannings.findIndex(item => sameId(item.id, previous.id));
+        const index = state.plannings.findIndex(item => item.id === previous.id);
         state.plannings[index] = planning;
       } else {
         state.plannings.unshift(planning);
@@ -1497,15 +1509,15 @@
     }
 
     function deletePlanning(id){
-      const plan = state.plannings.find(item => sameId(item.id, id));
+      const plan = state.plannings.find(item => item.id === id);
       if (!plan) return;
-      const relatedCount = state.objectives.filter(obj => sameId(obj.planningId, id)).length;
+      const relatedCount = state.objectives.filter(obj => obj.planningId === id).length;
       const message = relatedCount
         ? `¿Seguro que deseas eliminar la planeación "${plan.name}"? También se eliminarán ${relatedCount} objetivo(s) asociados.`
         : `¿Seguro que deseas eliminar la planeación "${plan.name}"?`;
       if (!confirm(message)) return;
       state.plannings = state.plannings.filter(item => item.id !== id);
-      state.objectives = state.objectives.filter(obj => !sameId(obj.planningId, id));
+      state.objectives = state.objectives.filter(obj => obj.planningId !== id);
       persistPlannings();
       persistObjectives();
       renderPlannings();
@@ -1523,7 +1535,7 @@
       planningEmptyState.style.display = filtered.length ? 'none' : 'block';
 
       filtered.forEach(plan => {
-        const objectives = state.objectives.filter(obj => sameId(obj.planningId, plan.id));
+        const objectives = state.objectives.filter(obj => obj.planningId === plan.id);
         const ql = objectives.length ? Math.round(objectives.map(obj => calculateQualitativeProgress(obj.activities)).reduce((a,b)=>a+b,0) / objectives.length) : 0;
         const qt = objectives.length ? Math.round(objectives.map(obj => calculateQuantitativeProgress(obj.indicators)).reduce((a,b)=>a+b,0) / objectives.length) : 0;
         const card = document.createElement('div');
@@ -1574,7 +1586,7 @@
       const query = document.getElementById('searchInput').value.trim().toLowerCase();
       const status = document.getElementById('statusFilter').value;
       const filtered = state.objectives.filter(obj => sameId(obj.planningId, state.currentPlanningId)).filter(obj => {
-        const haystack = [obj.name, obj.description, obj.leader, obj.createdBy, ...normalizeTextList(obj.tags), ...normalizeTextList(obj.areas), ...normalizeTextList(obj.linkedProjects), ...normalizeTextList(obj.invited), ...((obj.reminders || []).map(x => x.text || '')), ...((obj.activities || []).flatMap(x => [x.name || '', x.owner || '', x.status || '', x.dueDate || ''])), ...((obj.checklist || []).flatMap(x => [x.text || '', x.dueDate || ''])), ...((obj.links || []).flatMap(x => [x.title || '', x.url || ''])), ...((obj.attachments || []).map(x => x.name || ''))].join(' ').toLowerCase();
+        const haystack = [obj.name, obj.description, obj.leader, obj.createdBy, ...toTextArray(obj.tags), ...toTextArray(obj.areas), ...toTextArray(obj.linkedProjects), ...toTextArray(obj.invited), ...((obj.reminders || []).map(x => x.text || '')), ...((obj.activities || []).flatMap(x => [x.name || '', x.owner || '', x.status || '', x.dueDate || ''])), ...((obj.checklist || []).flatMap(x => [x.text || '', x.dueDate || ''])), ...((obj.links || []).flatMap(x => [x.title || '', x.url || ''])), ...((obj.attachments || []).map(x => x.name || ''))].join(' ').toLowerCase();
         return (!query || haystack.includes(query)) && (status === 'all' || obj.status === status);
       });
 
@@ -1595,7 +1607,7 @@
           <td><span class="status-badge status-${obj.status}">${statusLabel(obj.status)}</span></td>
           <td>
             <div class="actions-inline">
-              <button class="btn-light small" type="button" data-view-id="${escapeHtml(String(obj.id))}" onclick="return openObjectiveDetailHard(this.getAttribute('data-view-id'))">Detalles</button>
+              <button class="btn-light small js-detail-btn" type="button" data-detail-objective-id="${escapeHtml(obj.id)}">Detalles</button>
               <button class="btn-secondary small" type="button" data-edit-id="${obj.id}">Editar</button>
               <button class="btn-danger small" type="button" data-delete-id="${obj.id}">Eliminar</button>
             </div>
@@ -1646,13 +1658,7 @@
         renderObjectives();
       });
       document.querySelectorAll('[data-open-actions-objective]').forEach(btn => btn.onclick = () => openInitiativeActionsModal(btn.dataset.openActionsObjective, btn.dataset.openActionsActivity));
-      document.querySelectorAll('[data-view-id]').forEach(btn => {
-        btn.onclick = (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          openDetailModal(btn.dataset.viewId);
-        };
-      });
+      // El botón Detalles se gestiona con un listener delegado global. No reasignar aquí.
       document.querySelectorAll('[data-edit-id]').forEach(btn => btn.onclick = () => startEdit(btn.dataset.editId));
       document.querySelectorAll('[data-delete-id]').forEach(btn => btn.onclick = () => deleteObjective(btn.dataset.deleteId));
     }
@@ -1932,7 +1938,7 @@
 
 
     function getActionContext(){
-      const obj = state.objectives.find(item => sameId(item.id, (state.actionObjectiveId || state.detailId)));
+      const obj = state.objectives.find(item => item.id === (state.actionObjectiveId || state.detailId));
       const activity = obj?.activities?.[state.actionActivityIndex];
       return { obj, activity };
     }
@@ -2056,34 +2062,41 @@
       if (state.detailId) renderDetailModal();
     }
 
-    function openObjectiveDetailHard(id){
-      const cleanId = String(id || '').trim();
-      if (!cleanId) {
+    function openObjectiveDetailFromButton(button){
+      const id = button?.getAttribute?.('data-detail-objective-id');
+      if (!id) {
         alert('No se encontró el ID del objetivo para abrir el detalle.');
-        return false;
+        return;
       }
-      try {
-        openDetailModal(cleanId);
-      } catch (error) {
-        console.error('Fallo crítico al abrir Detalles:', error);
-        alert('No se pudo abrir Detalles. Error: ' + (error && error.message ? error.message : error));
-      }
-      return false;
+      openDetailModal(id);
     }
-    window.openObjectiveDetailHard = openObjectiveDetailHard;
 
     function openDetailModal(id){
-      const obj = state.objectives.find(item => sameId(item.id, id));
-      if (!obj) {
+      const index = state.objectives.findIndex(item => sameId(item.id, id));
+      if (index === -1) {
+        console.warn('No se encontró objetivo para detalle:', id, state.objectives.map(item => item.id));
         alert('No se pudo abrir el detalle del objetivo. Revisa que el objetivo tenga un ID válido.');
         return;
       }
-      state.detailId = obj.id;
-      state.detailTab = 'comments';
-      state.detailIndicatorView = 'active';
-      renderDetailModal();
-      detailModal.classList.add('open');
-      detailModal.setAttribute('aria-hidden', 'false');
+
+      const normalized = normalizeObjective(state.objectives[index]);
+      normalized.planningId = normalized.planningId || state.currentPlanningId || state.plannings[0]?.id || 'plan_demo_2026';
+      state.objectives[index] = normalized;
+      persistObjectives();
+
+      try {
+        state.detailId = normalized.id;
+        state.detailTab = 'comments';
+        state.detailIndicatorView = 'active';
+        renderDetailModal();
+        detailModal.classList.add('open');
+        detailModal.setAttribute('aria-hidden', 'false');
+      } catch (error) {
+        console.error('Error al abrir detalle del objetivo:', error);
+        detailContent.innerHTML = `<div class="detail-shell"><div class="detail-topbar"><div class="detail-title-row"><button class="icon-btn" type="button" onclick="closeDetailModal()">←</button><h2>${escapeHtml(normalized.name || 'Detalle del objetivo')}</h2></div></div><div class="detail-panel"><h3>No se pudo renderizar el detalle completo</h3><div class="desc-text">El objetivo existe, pero algún dato guardado tiene un formato inválido. Error: ${escapeHtml(error.message || error)}</div><button class="btn-secondary" type="button" onclick="startEdit('${String(normalized.id).replace(/'/g, "\\'")}')">Editar objetivo</button></div></div>`;
+        detailModal.classList.add('open');
+        detailModal.setAttribute('aria-hidden', 'false');
+      }
     }
 
     function closeDetailModal(){
@@ -2157,7 +2170,7 @@
                 <div class="three-col">
                   <div><div class="subtle-label">Creador</div><div class="meta-value">${escapeHtml(obj.createdBy || '—')}</div></div>
                   <div><div class="subtle-label">Líder Responsable</div><div class="meta-value">${escapeHtml(obj.leader || '—')}</div></div>
-                  <div><div class="subtle-label">Invitados</div><div class="meta-value">${escapeHtml(normalizeTextList(obj.invited).join(', ') || '—')}</div></div>
+                  <div><div class="subtle-label">Invitados</div><div class="meta-value">${escapeHtml((obj.invited || []).join(', ') || '—')}</div></div>
                 </div>
               </div>
 
@@ -2896,14 +2909,8 @@
       }
     });
 
-    document.addEventListener('click', function(e){
-      const btn = e.target && e.target.closest ? e.target.closest('button[data-view-id]') : null;
-      if (!btn) return;
-      e.preventDefault();
-      e.stopPropagation();
-      openObjectiveDetailHard(btn.getAttribute('data-view-id'));
-    }, true);
-
+    state.objectives = state.objectives.map(normalizeObjective);
+    persistObjectives();
     resetForm();
     renderPlannings();
   </script>
