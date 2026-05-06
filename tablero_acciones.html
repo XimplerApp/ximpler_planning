@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Ximpler - Tablero Operativo</title>
+  <style>
+    :root{
+      --bg:#f5f7fa;--card:#fff;--line:#e6ebf0;--line-dark:#d5dde7;--text:#243041;--muted:#6b7280;
+      --green:#22a652;--green-soft:#e8f7ee;--yellow:#d6a300;--yellow-soft:#fff6d7;--red:#dc3545;--red-soft:#fdecef;--blue:#0f5ea9;--blue-soft:#eef5ff;--shadow:0 12px 30px rgba(15,23,42,.08);--radius:14px;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:Arial,Helvetica,sans-serif;background:var(--bg);color:var(--text)}
+    .page{max-width:1320px;margin:0 auto;padding:28px}
+    .topbar{display:flex;justify-content:space-between;align-items:center;gap:16px;margin-bottom:18px}
+    .title-wrap h1{margin:0;font-size:34px;line-height:1.05}
+    .title-wrap p{margin:6px 0 0;color:var(--muted);font-size:14px}
+    .breadcrumb-btn{border:none;background:transparent;color:var(--green);font-weight:800;cursor:pointer;padding:0;font-size:14px;font-family:inherit;margin-bottom:4px}
+    .btn-secondary,.btn-light{border:1px solid var(--line-dark);background:#fff;color:var(--text);padding:10px 14px;border-radius:10px;font-weight:700;cursor:pointer;font-size:14px;font-family:inherit;text-decoration:none;display:inline-flex;align-items:center;justify-content:center}
+    .btn-export{border:none;background:var(--green);color:#fff;padding:11px 16px;border-radius:10px;font-weight:800;cursor:pointer;font-size:14px;font-family:inherit;box-shadow:var(--shadow)}
+    .card{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);border:1px solid var(--line);overflow:hidden}
+    .filters{display:grid;grid-template-columns:1fr 220px;gap:12px;padding:18px;border-bottom:1px solid var(--line)}
+    .input,.select{width:100%;border:1px solid var(--line-dark);background:#fff;border-radius:10px;padding:12px 14px;font-size:14px;color:var(--text);outline:none;font-family:inherit}
+    .input:focus,.select:focus{border-color:#7bb7ff;box-shadow:0 0 0 3px rgba(69,137,255,.12)}
+    .table-wrap{overflow-x:auto}
+    table{width:100%;border-collapse:collapse;min-width:1180px}
+    th,td{padding:16px 14px;border-bottom:1px solid var(--line);font-size:14px;vertical-align:top}
+    th{text-align:left;color:var(--muted);font-weight:700;background:#fbfcfd}
+    tbody tr:hover{background:#fcfdfd}
+    .group-cell{background:#fff;vertical-align:top}
+    .group-box{border:1px solid var(--line-dark);border-radius:12px;padding:12px 13px;background:#fff;box-shadow:0 6px 14px rgba(15,23,42,.04);min-width:210px}
+    .group-box.objective-box{border-left:4px solid var(--green)}
+    .group-box.initiative-box{border-left:4px solid var(--blue)}
+    .group-kicker{font-size:11px;text-transform:uppercase;color:var(--muted);font-weight:800;margin-bottom:5px}
+    .group-sub{font-size:12px;color:var(--muted);margin-top:6px;line-height:1.35}
+    .group-start td{border-top:1px solid var(--line)}
+    .action-stack{display:flex;flex-direction:column;gap:6px}
+    .objective-name{font-weight:800;color:var(--green)}
+    .initiative-name{font-weight:700;color:var(--text)}
+    .action-title{font-weight:800;color:var(--text);margin-bottom:5px}
+    .action-detail{color:var(--muted);font-size:12px;line-height:1.4;max-width:360px}
+    .status-badge{display:inline-flex;align-items:center;gap:8px;padding:8px 10px;border-radius:999px;font-weight:700;font-size:12px;white-space:nowrap}
+    .status-activo,.status-terminada,.status-terminado{background:var(--green-soft);color:var(--green)}
+    .status-en_progreso{background:var(--blue-soft);color:var(--blue)}
+    .status-por_hacer,.status-pendiente{background:#eef2f7;color:#667085}
+    .status-pausada,.status-pausado{background:var(--yellow-soft);color:var(--yellow)}
+    .status-en_riesgo{background:var(--yellow-soft);color:var(--yellow)}
+    .status-vencida{background:var(--red-soft);color:var(--red)}
+    .empty-state{padding:22px;text-align:center;color:var(--muted);font-size:14px}
+    .summary{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:18px}
+    .summary-item{background:#fff;border:1px solid var(--line);border-radius:14px;padding:14px 16px;box-shadow:var(--shadow)}
+    .summary-label{font-size:12px;color:var(--muted);font-weight:800;text-transform:uppercase;margin-bottom:6px}
+    .summary-value{font-size:24px;font-weight:800}
+    .advance-cell{text-align:center;vertical-align:middle;background:#fff}
+    .advance-box{display:inline-flex;flex-direction:column;align-items:center;gap:6px;min-width:94px}
+    .advance-ring{--size:58px;width:var(--size);height:var(--size);border-radius:50%;display:grid;place-items:center;font-size:13px;font-weight:800;color:var(--text);position:relative;background:conic-gradient(var(--advance-color) calc(var(--advance)*1%), #edf1f5 0)}
+    .advance-ring::after{content:"";width:44px;height:44px;background:#fff;border-radius:50%;position:absolute}
+    .advance-ring span{position:relative;z-index:1}
+    .advance-label{font-size:11px;color:var(--muted);font-weight:800;text-transform:uppercase}
+    @media (max-width:900px){.filters,.summary{grid-template-columns:1fr}.topbar{flex-direction:column;align-items:stretch}.page{padding:18px}.btn-export{width:100%}}
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div class="topbar">
+      <div class="title-wrap">
+        <button class="breadcrumb-btn" type="button" onclick="history.back()">← Volver a Objetivos</button>
+        <h1>Tablero Operativo</h1>
+        <p id="subtitle">Concentrado de acciones por objetivo e iniciativa.</p>
+      </div>
+
+      <button id="exportCsvBtn" class="btn-export" type="button">Exportar CSV</button>
+    </div>
+
+    <div class="summary">
+      <div class="summary-item"><div class="summary-label">Objetivos</div><div id="sumObjectives" class="summary-value">0</div></div>
+      <div class="summary-item"><div class="summary-label">Iniciativas</div><div id="sumInitiatives" class="summary-value">0</div></div>
+      <div class="summary-item"><div class="summary-label">Acciones</div><div id="sumActions" class="summary-value">0</div></div>
+      <div class="summary-item"><div class="summary-label">Vencidas</div><div id="sumOverdue" class="summary-value">0</div></div>
+      <div class="summary-item"><div class="summary-label">% Operativo</div><div id="sumOperational" class="summary-value">0%</div></div>
+    </div>
+
+    <div class="card">
+      <div class="filters">
+        <input id="searchInput" class="input" type="text" placeholder="Buscar por objetivo, iniciativa, acción o responsable" />
+        <select id="statusFilter" class="select">
+          <option value="all" selected>Todos los estatus</option>
+          <option value="Por hacer">Por hacer</option>
+          <option value="En progreso">En progreso</option>
+          <option value="Terminada">Terminada</option>
+          <option value="Pausada">Pausada</option>
+          <option value="Vencida">Vencida</option>
+        </select>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>% Avance Operativo Obj.</th>
+              <th>Objetivo</th>
+              <th>% Avance Operativo Inic.</th>
+              <th>Iniciativa(s)</th>
+              <th>Acciones</th>
+              <th>Responsable</th>
+              <th>Fecha de Compromiso</th>
+              <th>Estatus</th>
+            </tr>
+          </thead>
+          <tbody id="actionsBody"></tbody>
+        </table>
+      </div>
+
+      <div id="emptyState" class="empty-state" style="display:none;">No hay acciones que coincidan con el filtro.</div>
+    </div>
+  </div>
+
+  <script>
+    const SAVE_KEY = 'ximpler_objetivos_demo_v7_planes';
+    const PLANNING_SAVE_KEY = 'ximpler_planeaciones_demo_v1';
+    const LEGACY_KEYS = ['ximpler_objetivos_demo_v7_planes','ximpler_objetivos_demo_v6_3','ximpler_objetivos_demo_v6_1','ximpler_objetivos_demo_v6','ximpler_objetivos_demo_v5','ximpler_objetivos_demo_v4','ximpler_objetivos_demo_v3','ximpler_objetivos_demo_v1'];
+
+    function escapeHtml(text){
+      const div = document.createElement('div');
+      div.textContent = String(text ?? '');
+      return div.innerHTML;
+    }
+
+    function formatDate(dateString){
+      if (!dateString) return '—';
+      const date = new Date(dateString + 'T00:00:00');
+      return new Intl.DateTimeFormat('es-MX', { day:'2-digit', month:'short', year:'numeric' }).format(date);
+    }
+
+    function formatRelativeDate(dateString){
+      if (!dateString) return '—';
+
+      const today = new Date();
+      today.setHours(0,0,0,0);
+
+      const target = new Date(dateString + 'T00:00:00');
+      target.setHours(0,0,0,0);
+
+      const diffDays = Math.round((target - today) / (1000 * 60 * 60 * 24));
+
+      if (diffDays > 0) return `En ${diffDays} día${diffDays !== 1 ? 's' : ''}`;
+      if (diffDays === 0) return 'Hoy';
+      return `Terminó hace ${Math.abs(diffDays)} día${diffDays !== -1 ? 's' : ''}`;
+    }
+
+    function statusKey(status){
+      return String(status || 'Por hacer')
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g,'')
+        .replace(/\s+/g,'_');
+    }
+
+    function isOverdue(dueDate, status){
+      if (!dueDate) return false;
+      if (String(status).toLowerCase() === 'terminada') return false;
+
+      const today = new Date();
+      today.setHours(0,0,0,0);
+
+      return new Date(dueDate + 'T00:00:00') < today;
+    }
+
+    function isDoneStatus(status){
+      return ['terminada','terminado','completada','completado','cumplida','cumplido'].includes(statusKey(status));
+    }
+
+    function actionAdvance(action){
+      return isDoneStatus(action?.status) ? 100 : 0;
+    }
+
+    function initiativeOperationalAdvance(activity = {}){
+      const actions = Array.isArray(activity.actions) ? activity.actions.map(normalizeAction) : [];
+
+      if (!actions.length) {
+        return isDoneStatus(activity.status) ? 100 : 0;
+      }
+
+      return Math.round(
+        actions.reduce((acc, action) => acc + actionAdvance(action), 0) / actions.length
+      );
+    }
+
+    function objectiveOperationalAdvance(obj = {}){
+      const activities = Array.isArray(obj.activities) ? obj.activities : [];
+      if (!activities.length) return 0;
+
+      return Math.round(
+        activities.reduce((acc, activity) => acc + initiativeOperationalAdvance(activity), 0) / activities.length
+      );
+    }
+
+    function getAdvanceColor(value){
+      if (value >= 80) return 'var(--green)';
+      if (value >= 50) return 'var(--yellow)';
+      return 'var(--red)';
+    }
+
+    function advanceRing(value, label){
+      const val = Math.max(0, Math.min(100, Number(value || 0)));
+      return '<div class="advance-box"><div class="advance-ring" style="--advance:' + val + '; --advance-color:' + getAdvanceColor(val) + ';"><span>' + val + '%</span></div>' + (label ? '<div class="advance-label">' + escapeHtml(label) + '</div>' : '') + '</div>';
+    }
+
+    function normalizeAction(action = {}){
+      return {
+        title: action.title || action.name || '',
+        responsible: action.responsible || action.owner || '',
+        dueDate: action.dueDate || action.date || '',
+        detail: action.detail || action.description || '',
+        status: action.status || 'Por hacer'
+      };
+    }
+
+    function loadObjectives(){
+      for (const key of LEGACY_KEYS){
+        const saved = localStorage.getItem(key);
+        if (!saved) continue;
+
+        try {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed)) return parsed;
+        } catch(e) {}
+      }
+
+      return [];
+    }
+
+    function loadPlannings(){
+      try {
+        return JSON.parse(localStorage.getItem(PLANNING_SAVE_KEY) || '[]');
+      } catch(e){
+        return [];
+      }
+    }
+
+    const params = new URLSearchParams(window.location.search);
+    const planningId = params.get('planningId');
+    const plannings = loadPlannings();
+    const planning = plannings.find(item => item.id === planningId);
+    const objectives = loadObjectives().filter(obj => !planningId || obj.planningId === planningId);
+
+    if (planning) {
+      document.getElementById('subtitle').textContent = `${planning.name} · Concentrado de acciones por objetivo e iniciativa.`;
+    }
+
+    function buildRows(){
+      const rows = [];
+
+      objectives.forEach(obj => {
+        const activities = Array.isArray(obj.activities) ? obj.activities : [];
+
+        activities.forEach(activity => {
+          const actions = Array.isArray(activity.actions) ? activity.actions.map(normalizeAction) : [];
+
+          if (!actions.length) {
+            rows.push({
+              objective: obj.name || '—',
+              objectiveAdvance: objectiveOperationalAdvance(obj),
+              initiative: activity.name || '—',
+              initiativeAdvance: initiativeOperationalAdvance(activity),
+              actionTitle: 'Sin acciones asignadas',
+              actionDetail: 'Esta iniciativa todavía no tiene acciones registradas.',
+              responsible: activity.owner || obj.leader || '—',
+              dueDate: activity.dueDate || '',
+              dueDateFormatted: formatDate(activity.dueDate || ''),
+              dueDateRelative: formatRelativeDate(activity.dueDate || ''),
+              status: activity.status || 'pendiente',
+              hasAction: false
+            });
+            return;
+          }
+
+          actions.forEach(action => {
+            const overdue = isOverdue(action.dueDate, action.status);
+            const finalStatus = overdue ? 'Vencida' : (action.status || 'Por hacer');
+
+            rows.push({
+              objective: obj.name || '—',
+              objectiveAdvance: objectiveOperationalAdvance(obj),
+              initiative: activity.name || '—',
+              initiativeAdvance: initiativeOperationalAdvance(activity),
+              actionTitle: action.title || 'Sin título',
+              actionDetail: action.detail || '',
+              responsible: action.responsible || activity.owner || obj.leader || '—',
+              dueDate: action.dueDate || '',
+              dueDateFormatted: formatDate(action.dueDate || ''),
+              dueDateRelative: formatRelativeDate(action.dueDate || ''),
+              status: finalStatus,
+              hasAction: true
+            });
+          });
+        });
+      });
+
+      return rows;
+    }
+
+    function getFilteredRows(){
+      const query = document.getElementById('searchInput').value.trim().toLowerCase();
+      const filterStatus = document.getElementById('statusFilter').value;
+      const allRows = buildRows();
+
+      return allRows.filter(row => {
+        const haystack = [
+          row.objective,
+          row.initiative,
+          row.actionTitle,
+          row.actionDetail,
+          row.responsible,
+          row.status
+        ].join(' ').toLowerCase();
+
+        return (!query || haystack.includes(query)) && (filterStatus === 'all' || row.status === filterStatus);
+      });
+    }
+
+    function groupRows(rows){
+      const objectiveGroups = [];
+
+      rows.forEach(row => {
+        let objectiveGroup = objectiveGroups.find(group => group.name === row.objective);
+
+        if (!objectiveGroup) {
+          objectiveGroup = { name: row.objective, rows: [], initiativeGroups: [] };
+          objectiveGroups.push(objectiveGroup);
+        }
+
+        objectiveGroup.rows.push(row);
+
+        let initiativeGroup = objectiveGroup.initiativeGroups.find(group => group.name === row.initiative);
+
+        if (!initiativeGroup) {
+          initiativeGroup = { name: row.initiative, rows: [] };
+          objectiveGroup.initiativeGroups.push(initiativeGroup);
+        }
+
+        initiativeGroup.rows.push(row);
+      });
+
+      return objectiveGroups;
+    }
+
+    function csvEscape(value){
+      const text = String(value ?? '');
+      return `"${text.replace(/"/g, '""')}"`;
+    }
+
+    function buildCsv(rows){
+      const headers = [
+        '% Avance Operativo Obj.',
+        'Objetivo',
+        '% Avance Operativo Inic.',
+        'Iniciativa',
+        'Acción',
+        'Detalle Acción',
+        'Responsable',
+        'Fecha Compromiso',
+        'Fecha Compromiso Relativa',
+        'Estatus'
+      ];
+
+      const lines = rows.map(row => [
+        `${row.objectiveAdvance}%`,
+        row.objective,
+        `${row.initiativeAdvance}%`,
+        row.initiative,
+        row.actionTitle,
+        row.actionDetail,
+        row.responsible,
+        row.dueDateFormatted,
+        row.dueDateRelative,
+        row.status
+      ].map(csvEscape).join(','));
+
+      return [headers.map(csvEscape).join(','), ...lines].join('\n');
+    }
+
+    function exportCsv(){
+      const rows = getFilteredRows();
+
+      if (!rows.length) {
+        alert('No hay datos para exportar con los filtros actuales.');
+        return;
+      }
+
+      const csv = '\uFEFF' + buildCsv(rows);
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+
+      const now = new Date();
+      const stamp = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+      const planName = planning?.name ? planning.name.replace(/[^\wáéíóúÁÉÍÓÚñÑ-]+/g, '_') : 'tablero_operativo';
+
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${planName}_reporte_operativo_${stamp}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      URL.revokeObjectURL(url);
+    }
+
+    function render(){
+      const allRows = buildRows();
+      const rows = getFilteredRows();
+
+      const objectiveCount = new Set(objectives.map(obj => obj.id || obj.name)).size;
+      const initiativeCount = objectives.reduce((acc, obj) => acc + (Array.isArray(obj.activities) ? obj.activities.length : 0), 0);
+      const actionCount = allRows.filter(row => row.hasAction).length;
+      const overdueCount = allRows.filter(row => row.status === 'Vencida').length;
+
+      document.getElementById('sumObjectives').textContent = objectiveCount;
+      document.getElementById('sumInitiatives').textContent = initiativeCount;
+      document.getElementById('sumActions').textContent = actionCount;
+      document.getElementById('sumOverdue').textContent = overdueCount;
+
+      const operationalTotal = objectives.length
+        ? Math.round(objectives.reduce((acc, obj) => acc + objectiveOperationalAdvance(obj), 0) / objectives.length)
+        : 0;
+
+      document.getElementById('sumOperational').textContent = operationalTotal + '%';
+
+      const body = document.getElementById('actionsBody');
+      const objectiveGroups = groupRows(rows);
+      const html = [];
+
+      objectiveGroups.forEach(objectiveGroup => {
+        let printedObjective = false;
+
+        objectiveGroup.initiativeGroups.forEach(initiativeGroup => {
+          let printedInitiative = false;
+
+          initiativeGroup.rows.forEach(row => {
+            const cells = [];
+            const isObjectiveStart = !printedObjective;
+            const isInitiativeStart = !printedInitiative;
+
+            if (isObjectiveStart) {
+              const objAdvance = objectiveGroup.rows[0]?.objectiveAdvance ?? 0;
+
+              cells.push(`
+                <td class="advance-cell" rowspan="${objectiveGroup.rows.length}">${advanceRing(objAdvance, 'Objetivo')}</td>
+                <td class="group-cell" rowspan="${objectiveGroup.rows.length}">
+                  <div class="group-box objective-box">
+                    <div class="group-kicker">Objetivo</div>
+                    <div class="objective-name">${escapeHtml(objectiveGroup.name)}</div>
+                    <div class="group-sub">${objectiveGroup.initiativeGroups.length} iniciativa(s) · ${objectiveGroup.rows.filter(item => item.hasAction).length} acción(es)</div>
+                  </div>
+                </td>
+              `);
+
+              printedObjective = true;
+            }
+
+            if (isInitiativeStart) {
+              const initAdvance = initiativeGroup.rows[0]?.initiativeAdvance ?? 0;
+
+              cells.push(`
+                <td class="advance-cell" rowspan="${initiativeGroup.rows.length}">${advanceRing(initAdvance, 'Iniciativa')}</td>
+                <td class="group-cell" rowspan="${initiativeGroup.rows.length}">
+                  <div class="group-box initiative-box">
+                    <div class="group-kicker">Iniciativa</div>
+                    <div class="initiative-name">${escapeHtml(initiativeGroup.name)}</div>
+                    <div class="group-sub">${initiativeGroup.rows.filter(item => item.hasAction).length || 0} acción(es)</div>
+                  </div>
+                </td>
+              `);
+
+              printedInitiative = true;
+            }
+
+            cells.push(`
+              <td>
+                <div class="action-stack">
+                  <div class="action-title">${escapeHtml(row.actionTitle)}</div>
+                  ${row.actionDetail ? `<div class="action-detail">${escapeHtml(row.actionDetail)}</div>` : ''}
+                </div>
+              </td>
+              <td>${escapeHtml(row.responsible)}</td>
+              <td>${escapeHtml(row.dueDateRelative)}</td>
+              <td><span class="status-badge status-${statusKey(row.status)}">${escapeHtml(row.status)}</span></td>
+            `);
+
+            html.push(`<tr class="${isObjectiveStart || isInitiativeStart ? 'group-start' : ''}">${cells.join('')}</tr>`);
+          });
+        });
+      });
+
+      body.innerHTML = html.join('');
+      document.getElementById('emptyState').style.display = rows.length ? 'none' : 'block';
+    }
+
+    document.getElementById('searchInput').addEventListener('input', render);
+    document.getElementById('statusFilter').addEventListener('change', render);
+    document.getElementById('exportCsvBtn').addEventListener('click', exportCsv);
+
+    render();
+  </script>
+</body>
+</html>
