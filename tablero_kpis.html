@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Ximpler - Tablero KPI´s</title>
+  <style>
+    :root{--bg:#f5f7fa;--card:#fff;--line:#e6ebf0;--line-dark:#d5dde7;--text:#243041;--muted:#6b7280;--green:#22a652;--green-soft:#e8f7ee;--yellow:#d6a300;--yellow-soft:#fff6d7;--red:#dc3545;--red-soft:#fdecef;--blue:#0f5ea9;--blue-soft:#eef5ff;--shadow:0 12px 30px rgba(15,23,42,.08);--radius:14px}
+    *{box-sizing:border-box}body{margin:0;font-family:Arial,Helvetica,sans-serif;background:var(--bg);color:var(--text)}.page{max-width:1480px;margin:0 auto;padding:26px}.topbar{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;margin-bottom:18px}h1{margin:0;font-size:32px;line-height:1.05}.subtitle{margin:7px 0 0;color:var(--muted);font-size:14px;line-height:1.45}.actions{display:flex;gap:10px;flex-wrap:wrap}.btn{border-radius:10px;font-weight:700;cursor:pointer;font-size:14px;transition:.2s ease;font-family:inherit;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:11px 14px}.btn-primary{border:none;background:var(--green);color:#fff;box-shadow:var(--shadow)}.btn-secondary{border:1px solid var(--line-dark);background:#fff;color:var(--text)}
+    .summary-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:16px}.summary-card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:14px;box-shadow:var(--shadow)}.summary-label{font-size:11px;text-transform:uppercase;color:var(--muted);font-weight:700;margin-bottom:7px}.summary-value{font-size:22px;font-weight:800}.summary-note{font-size:12px;color:var(--muted);margin-top:3px}.card{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);border:1px solid var(--line);overflow:hidden}.filters{display:grid;grid-template-columns:1fr 240px 240px;gap:12px;padding:16px;border-bottom:1px solid var(--line)}.input,.select{width:100%;border:1px solid var(--line-dark);background:#fff;border-radius:10px;padding:12px 14px;font-size:14px;color:var(--text);outline:none;font-family:inherit}.input:focus,.select:focus,.weight-input:focus{border-color:#7bb7ff;box-shadow:0 0 0 3px rgba(69,137,255,.12)}
+    .table-wrap{overflow:auto}table{width:100%;border-collapse:collapse;min-width:1450px}th,td{padding:12px 10px;border-bottom:1px solid var(--line);font-size:13px;vertical-align:middle}th{text-align:left;color:#606b7b;font-weight:800;background:#fbfcfd;text-transform:uppercase;font-size:11px;letter-spacing:.02em}tbody tr:hover{background:#fcfdfd}.objective-cell{font-weight:800;color:#334155}.indicator-cell{font-weight:700}.muted{color:var(--muted)}.weight-input{width:78px;border:1px solid var(--line-dark);border-radius:9px;padding:8px 9px;font-size:13px;font-weight:800;color:#111827;background:#fff}.weight-wrap{display:flex;align-items:center;gap:5px}.advance-pill{display:inline-flex;align-items:center;justify-content:center;min-width:54px;padding:7px 10px;border-radius:999px;font-weight:800}.advance-green{background:var(--green-soft);color:var(--green)}.advance-yellow{background:var(--yellow-soft);color:#a67c00}.advance-red{background:var(--red-soft);color:var(--red)}
+    .gauge{width:76px;height:42px;position:relative;overflow:hidden}.gauge::before{content:"";position:absolute;left:0;top:0;width:76px;height:76px;border-radius:50%;background:conic-gradient(from 270deg,var(--red) 0 54deg,var(--yellow) 54deg 108deg,var(--green) 108deg 180deg,#e9eef3 180deg 360deg)}.gauge::after{content:"";position:absolute;left:14px;top:14px;width:48px;height:48px;border-radius:50%;background:#fff}.needle{position:absolute;left:37px;bottom:3px;width:3px;height:31px;background:#172033;border-radius:999px;transform-origin:bottom center;transform:rotate(calc(-90deg + (var(--score)*1.8deg)));z-index:2}.needle::after{content:"";position:absolute;left:-4px;bottom:-4px;width:11px;height:11px;border-radius:50%;background:#172033}.score-text{position:absolute;left:0;right:0;bottom:-1px;text-align:center;font-size:10px;font-weight:800;z-index:3}.state{display:inline-flex;align-items:center;gap:6px;padding:7px 10px;border-radius:999px;font-weight:800;font-size:12px}.state-green{background:#e8f7ee;color:var(--green)}.state-yellow{background:#fff6d7;color:#a67c00}.state-red{background:#fdecef;color:var(--red)}.arrow{font-size:18px;line-height:1}.edit-btn{border:1px solid #f2b7bf;color:#c82333;background:#fff5f6;border-radius:8px;padding:7px 9px;cursor:pointer;font-weight:800}.empty{padding:24px;text-align:center;color:var(--muted)}
+    @media(max-width:900px){.topbar{flex-direction:column}.summary-grid,.filters{grid-template-columns:1fr}.page{padding:16px}}
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div class="topbar">
+      <div>
+        <h1>Tablero KPI´s</h1>
+        <p id="subtitle" class="subtitle">Vista ejecutiva de objetivos, indicadores, pesos, valor actual, metas, avance y estado.</p>
+      </div>
+      <div class="actions">
+        <button id="backBtn" class="btn btn-secondary" type="button">← Volver al Index</button>
+        <button id="refreshBtn" class="btn btn-primary" type="button">Actualizar datos</button>
+      </div>
+    </div>
+
+    <div class="summary-grid">
+      <div class="summary-card"><div class="summary-label">Planeación</div><div id="planName" class="summary-value">—</div><div id="planMap" class="summary-note">Mapa: —</div></div>
+      <div class="summary-card"><div class="summary-label">Objetivos</div><div id="totalObjectives" class="summary-value">0</div><div class="summary-note">Dentro de la planeación</div></div>
+      <div class="summary-card"><div class="summary-label">Indicadores</div><div id="totalIndicators" class="summary-value">0</div><div class="summary-note">Activos visibles</div></div>
+      <div class="summary-card"><div class="summary-label">Avance promedio</div><div id="avgAdvance" class="summary-value">0%</div><div class="summary-note">Promedio simple de indicadores</div></div>
+      <div class="summary-card"><div class="summary-label">Estado general</div><div id="generalState" class="summary-value">—</div><div class="summary-note">Según avance promedio</div></div>
+    </div>
+
+    <div class="card">
+      <div class="filters">
+        <input id="searchInput" class="input" type="text" placeholder="Buscar objetivo, indicador, responsable, área..." />
+        <select id="stateFilter" class="select"><option value="all">Todos los estados</option><option value="green">En meta</option><option value="yellow">Atención</option><option value="red">Crítico</option></select>
+        <select id="objectiveFilter" class="select"><option value="all">Todos los objetivos</option></select>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Medidor</th>
+              <th>Objetivo</th>
+              <th>Peso objetivo</th>
+              <th>Indicador</th>
+              <th>Peso indicador</th>
+              <th>Subárea</th>
+              <th>Valor Actual</th>
+              <th>Valor Objetivo</th>
+              <th>Fecha Compromiso Meta</th>
+              <th>Avance</th>
+              <th>Estado</th>
+              <th>Editar</th>
+            </tr>
+          </thead>
+          <tbody id="kpiBody"></tbody>
+        </table>
+      </div>
+      <div id="emptyState" class="empty" style="display:none;">No hay KPI´s que coincidan con los filtros.</div>
+    </div>
+  </div>
+
+  <script>
+    const OBJECTIVES_KEY='ximpler_objetivos_demo_v7_planes';
+    const PLANNINGS_KEY='ximpler_planeaciones_demo_v1';
+    const params=new URLSearchParams(window.location.search);
+    let currentPlanningId=params.get('planningId')||localStorage.getItem('ximpler_current_planning_id')||'';
+    let plannings=[];
+    let objectives=[];
+
+    function escapeHtml(text){const div=document.createElement('div');div.textContent=String(text??'');return div.innerHTML;}
+    function formatDate(dateString){if(!dateString)return'—';const d=new Date(dateString+'T00:00:00');return new Intl.DateTimeFormat('es-MX',{day:'2-digit',month:'short',year:'numeric'}).format(d)}
+    function loadJson(key){try{return JSON.parse(localStorage.getItem(key)||'[]')}catch(e){return[]}}
+    function saveObjectives(){localStorage.setItem(OBJECTIVES_KEY,JSON.stringify(objectives));}
+    function normalizeIndicator(ind={}){return{name:ind.name||'',action:ind.action||'Incrementar',unit:ind.unit||'',initialValue:Number(ind.initialValue??ind.initial??0),target:Number(ind.target??0),current:Number(ind.current??0),frequency:ind.frequency||'Mensual',owner:ind.owner||'',hidden:Boolean(ind.hidden),metaPlan:Array.isArray(ind.metaPlan)?ind.metaPlan:[],kpiWeight:ind.kpiWeight!==undefined?Number(ind.kpiWeight):undefined,valueHistory:Array.isArray(ind.valueHistory)?ind.valueHistory:[]}}
+    function normalizeObjective(obj={}){return{...obj,id:obj.id||'',planningId:obj.planningId||'',name:obj.name||'',description:obj.description||'',leader:obj.leader||'',createdBy:obj.createdBy||obj.leader||'Sistema',startDate:obj.startDate||'',endDate:obj.endDate||'',status:obj.status||'activo',kpiWeight:obj.kpiWeight!==undefined?Number(obj.kpiWeight):undefined,invited:Array.isArray(obj.invited)?obj.invited:[],areas:Array.isArray(obj.areas)?obj.areas:[],linkedProjects:Array.isArray(obj.linkedProjects)?obj.linkedProjects:[],tags:Array.isArray(obj.tags)?obj.tags:[],activities:Array.isArray(obj.activities)?obj.activities:[],reminders:Array.isArray(obj.reminders)?obj.reminders:[],checklist:Array.isArray(obj.checklist)?obj.checklist:[],links:Array.isArray(obj.links)?obj.links:[],attachments:Array.isArray(obj.attachments)?obj.attachments:[],comments:Array.isArray(obj.comments)?obj.comments:[],history:Array.isArray(obj.history)?obj.history:[],indicators:Array.isArray(obj.indicators)?obj.indicators.map(normalizeIndicator):[]}}
+    function normalizePlanning(plan={}){return{id:plan.id||'',name:plan.name||'',description:plan.description||'',map:plan.map||'',owner:plan.owner||'',startDate:plan.startDate||'',endDate:plan.endDate||'',status:plan.status||'activo'}}
+
+    function getLocalDateKey(date=new Date()){
+      const y=date.getFullYear();
+      const m=String(date.getMonth()+1).padStart(2,'0');
+      const d=String(date.getDate()).padStart(2,'0');
+      return `${y}-${m}-${d}`;
+    }
+
+    function getEffectiveTarget(indicator={},referenceDate=new Date()){
+      const base=Number(indicator.target??0);
+      const plans=Array.isArray(indicator.metaPlan)?indicator.metaPlan.filter(x=>x&&x.plannedDate).sort((a,b)=>String(a.plannedDate).localeCompare(String(b.plannedDate))):[];
+      if(!plans.length)return base;
+      const key=getLocalDateKey(referenceDate);
+      const app=plans.filter(x=>x.plannedDate<=key);
+      return app.length?Number(app[app.length-1].quantity??base):base;
+    }
+
+    function getMetaCommitmentDate(indicator={},objective={}){
+      const todayKey=getLocalDateKey();
+
+      const plans=Array.isArray(indicator.metaPlan)
+        ? indicator.metaPlan
+            .filter(x=>x&&x.plannedDate)
+            .sort((a,b)=>String(a.plannedDate).localeCompare(String(b.plannedDate)))
+        : [];
+
+      if(plans.length){
+        const upcoming=plans.find(x=>x.plannedDate>=todayKey);
+        return upcoming ? upcoming.plannedDate : plans[plans.length-1].plannedDate;
+      }
+
+      return objective.endDate || '';
+    }
+
+    function formatRelativeCommitmentDate(dateString){
+      if(!dateString)return'—';
+
+      const today=new Date();
+      today.setHours(0,0,0,0);
+
+      const target=new Date(dateString+'T00:00:00');
+      target.setHours(0,0,0,0);
+
+      const diffDays=Math.round((target-today)/(1000*60*60*24));
+
+      if(diffDays>0)return`En ${diffDays} día${diffDays!==1?'s':''}`;
+      if(diffDays===0)return'Hoy';
+      return`Hace ${Math.abs(diffDays)} día${diffDays!==-1?'s':''}`;
+    }
+    
+    function calculateIndicatorAdvance(ind={},allowNegative=true){
+      const action=String(ind.action||'Incrementar').toLowerCase();
+      const initial=Number(ind.initialValue??0);
+      const target=Number(getEffectiveTarget(ind)??ind.target??0);
+      const current=Number(ind.current??0);
+      const norm=v=>allowNegative?Math.round(Math.min(100,v)):Math.round(Math.max(0,Math.min(100,v)));
+
+      if(action==='reducir'){
+        const need=initial-target;
+        if(need<=0)return current<=target?100:(allowNegative?-100:0);
+        return norm(((initial-current)/need)*100);
+      }
+
+      if(action==='mantener'){
+        if(current===target)return 100;
+        const base=Math.abs(initial)||Math.abs(target)||1;
+        return norm((-Math.abs(current-target)/base)*100);
+      }
+
+      const need=target-initial;
+      if(need<=0)return current>=target?100:(allowNegative?-100:0);
+      return norm(((current-initial)/need)*100);
+    }
+
+    function getState(score){if(score>=80)return{key:'green',label:'En meta',cls:'state-green',arrow:'▲'};if(score>=50)return{key:'yellow',label:'Atención',cls:'state-yellow',arrow:'▬'};return{key:'red',label:'Crítico',cls:'state-red',arrow:'▼'}}
+    function getAdvanceClass(score){if(score>=80)return'advance-green';if(score>=50)return'advance-yellow';return'advance-red'}
+    function loadData(){plannings=loadJson(PLANNINGS_KEY).map(normalizePlanning);objectives=loadJson(OBJECTIVES_KEY).map(normalizeObjective);if(!currentPlanningId&&plannings.length)currentPlanningId=plannings[0].id;if(currentPlanningId)localStorage.setItem('ximpler_current_planning_id',currentPlanningId)}
+    function visibleObjectives(){return objectives.filter(o=>o.planningId===currentPlanningId)}
+    
+    function objectiveAvg(obj){
+      const inds=(obj.indicators||[]).filter(i=>!i.hidden);
+      if(!inds.length)return 0;
+      const scores=inds.map(i=>calculateIndicatorAdvance(i,true));
+      return Math.round(scores.reduce((a,b)=>a+b,0)/scores.length);
+    }
+
+    function defaultObjectiveWeight(){const objs=visibleObjectives();return objs.length?Math.round(100/objs.length):0}
+    function defaultIndicatorWeight(obj){const inds=(obj.indicators||[]).filter(i=>!i.hidden);return inds.length?Math.round(100/inds.length):0}
+    function populateObjectiveFilter(){const sel=document.getElementById('objectiveFilter');const selected=sel.value;const objs=visibleObjectives();sel.innerHTML='<option value="all">Todos los objetivos</option>'+objs.map(o=>`<option value="${escapeHtml(o.id)}">${escapeHtml(o.name)}</option>`).join('');if([...sel.options].some(o=>o.value===selected))sel.value=selected;}
+    
+    function filteredGroups(){
+      const query=document.getElementById('searchInput').value.trim().toLowerCase();
+      const stateFilter=document.getElementById('stateFilter').value;
+      const objectiveFilter=document.getElementById('objectiveFilter').value;
+
+      return visibleObjectives().map(obj=>{
+        const inds=(obj.indicators||[]).filter(i=>!i.hidden).map((ind,indicatorIndex)=>{
+          const score=calculateIndicatorAdvance(ind,true);
+          const st=getState(score);
+          const hay=[obj.name,obj.description,obj.leader,...(obj.areas||[]),ind.name,ind.owner,ind.unit,ind.action].join(' ').toLowerCase();
+
+          if(query&&!hay.includes(query))return null;
+          if(stateFilter!=='all'&&st.key!==stateFilter)return null;
+          if(objectiveFilter!=='all'&&obj.id!==objectiveFilter)return null;
+
+          return{ind,indicatorIndex,score,state:st};
+        }).filter(Boolean);
+
+        return{obj,inds};
+      }).filter(group=>group.inds.length);
+    }
+
+    function updateObjectiveWeight(objectiveId,value){const obj=objectives.find(o=>o.id===objectiveId);if(!obj)return;obj.kpiWeight=Number(value||0);saveObjectives();render(false)}
+    function updateIndicatorWeight(objectiveId,indicatorIndex,value){const obj=objectives.find(o=>o.id===objectiveId);if(!obj||!obj.indicators[indicatorIndex])return;obj.indicators[indicatorIndex].kpiWeight=Number(value||0);saveObjectives();render(false)}
+    
+    function render(shouldLoad=true){
+      if(shouldLoad)loadData();
+      populateObjectiveFilter();
+
+      const plan=plannings.find(p=>p.id===currentPlanningId)||{};
+      const planObjectives=visibleObjectives();
+      const indicators=planObjectives.flatMap(o=>(o.indicators||[]).filter(i=>!i.hidden));
+      const scores=indicators.map(i=>calculateIndicatorAdvance(i,true));
+      const avg=scores.length?Math.round(scores.reduce((a,b)=>a+b,0)/scores.length):0;
+      const general=getState(avg);
+
+      document.getElementById('subtitle').textContent=`${plan.description||'Vista ejecutiva de objetivos e indicadores.'} · Periodo: ${formatDate(plan.startDate)} → ${formatDate(plan.endDate)}`;
+      document.getElementById('planName').textContent=plan.name||'—';
+      document.getElementById('planMap').textContent=`Mapa: ${plan.map||'—'}`;
+      document.getElementById('totalObjectives').textContent=planObjectives.length;
+      document.getElementById('totalIndicators').textContent=indicators.length;
+      document.getElementById('avgAdvance').textContent=`${avg}%`;
+      document.getElementById('generalState').innerHTML=`<span class="state ${general.cls}">${general.arrow} ${general.label}</span>`;
+
+      const groups=filteredGroups();
+      const body=document.getElementById('kpiBody');
+      const empty=document.getElementById('emptyState');
+
+      body.innerHTML='';
+      empty.style.display=groups.length?'none':'block';
+
+      const objDefault=defaultObjectiveWeight();
+
+      groups.forEach(group=>{
+        const objScore=objectiveAvg(group.obj);
+        const indDefault=defaultIndicatorWeight(group.obj);
+
+        group.inds.forEach((row,idx)=>{
+          const tr=document.createElement('tr');
+          const first=idx===0;
+          const objWeight=group.obj.kpiWeight!==undefined?group.obj.kpiWeight:objDefault;
+          const indWeight=row.ind.kpiWeight!==undefined?row.ind.kpiWeight:indDefault;
+          const metaCommitmentDate=getMetaCommitmentDate(row.ind,group.obj);
+
+          tr.innerHTML=`${first?`<td rowspan="${group.inds.length}"><div class="gauge" style="--score:${Math.max(0,Math.min(100,objScore))}"><div class="needle"></div><div class="score-text">${objScore}%</div></div></td><td rowspan="${group.inds.length}" class="objective-cell">${escapeHtml(group.obj.name)}<div class="muted" style="font-weight:400;margin-top:4px">${escapeHtml(group.obj.leader||'—')}</div></td><td rowspan="${group.inds.length}"><div class="weight-wrap"><input class="weight-input" type="number" min="0" max="100" step="1" value="${escapeHtml(objWeight)}" data-objective-weight="${escapeHtml(group.obj.id)}"><span>%</span></div></td>`:''}<td class="indicator-cell">${escapeHtml(row.ind.name||'—')}</td><td><div class="weight-wrap"><input class="weight-input" type="number" min="0" max="100" step="1" value="${escapeHtml(indWeight)}" data-indicator-weight="${escapeHtml(group.obj.id)}" data-indicator-index="${row.indicatorIndex}"><span>%</span></div></td><td>${escapeHtml(row.ind.owner||group.obj.areas.join(', ')||group.obj.leader||'—')}</td><td>${escapeHtml(row.ind.current)} ${escapeHtml(row.ind.unit||'')}</td><td>${escapeHtml(getEffectiveTarget(row.ind))} ${escapeHtml(row.ind.unit||'')}</td><td>${escapeHtml(formatRelativeCommitmentDate(metaCommitmentDate))}</td><td><span class="advance-pill ${getAdvanceClass(row.score)}">${row.score}%</span></td><td><span class="state ${row.state.cls}"><span class="arrow">${row.state.arrow}</span>${row.state.label}</span></td><td><button class="edit-btn" title="La edición detallada se realiza en el index principal" onclick="alert('Edita el valor actual, meta y datos completos desde el detalle del objetivo en el index principal.')">✎</button></td>`;
+
+          body.appendChild(tr);
+        });
+      });
+
+      document.querySelectorAll('[data-objective-weight]').forEach(input=>{
+        input.addEventListener('change',()=>updateObjectiveWeight(input.dataset.objectiveWeight,input.value));
+      });
+
+      document.querySelectorAll('[data-indicator-weight]').forEach(input=>{
+        input.addEventListener('change',()=>updateIndicatorWeight(input.dataset.indicatorWeight,Number(input.dataset.indicatorIndex),input.value));
+      });
+    }
+
+    document.getElementById('refreshBtn').addEventListener('click',()=>render(true));
+    document.getElementById('searchInput').addEventListener('input',()=>render(false));
+    document.getElementById('stateFilter').addEventListener('change',()=>render(false));
+    document.getElementById('objectiveFilter').addEventListener('change',()=>render(false));
+    document.getElementById('backBtn').addEventListener('click',()=>{if(history.length>1){history.back();}else{window.location.href='index_planeaciones_kpis_misma_pestana.html';}});
+    render(true);
+  </script>
+</body>
+</html>
