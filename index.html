@@ -942,29 +942,6 @@
     const initiativeActionsContent = document.getElementById('initiativeActionsContent');
     const actionDetailModal = document.getElementById('actionDetailModal');
 
-    // FIX GitHub Pages / navegación dinámica:
-    // Captura el click de Detalles directamente desde el tbody antes de cualquier otro listener.
-    // Esto evita que el botón dependa de reasignaciones onclick después de renderizar filas.
-    if (objectivesBody) {
-      objectivesBody.addEventListener('click', function(e){
-        const detailBtn = e.target.closest('[data-view-id]');
-        if (!detailBtn) return;
-        e.preventDefault();
-        e.stopPropagation();
-        openDetailModal(detailBtn.getAttribute('data-view-id'));
-      }, true);
-    }
-
-    window.__openObjectiveDetail = function(button){
-      const id = button?.getAttribute?.('data-view-id');
-      if (!id) {
-        alert('No se encontró el ID del objetivo para abrir el detalle.');
-        return false;
-      }
-      openDetailModal(id);
-      return false;
-    };
-
     function normalizeComment(comment){
       if (typeof comment === 'string') return { author:'Sistema', text:comment, date:new Date().toISOString().slice(0,10) };
       return { author: comment?.author || 'Sistema', text: comment?.text || '', date: comment?.date || new Date().toISOString().slice(0,10) };
@@ -988,6 +965,40 @@
     }
 
 
+
+
+    function toObjectArray(value){
+      if (Array.isArray(value)) return value.filter(Boolean);
+      if (value && typeof value === 'object') return Object.values(value).filter(item => item && typeof item === 'object');
+      return [];
+    }
+
+    function normalizeTextList(value){
+      if (Array.isArray(value)) {
+        return value.map(item => {
+          if (item && typeof item === 'object') return item.name || item.title || item.text || item.label || item.value || '';
+          return item;
+        }).map(item => String(item || '').trim()).filter(Boolean);
+      }
+
+      if (value && typeof value === 'object') {
+        return Object.values(value).map(item => {
+          if (item && typeof item === 'object') return item.name || item.title || item.text || item.label || item.value || '';
+          return item;
+        }).map(item => String(item || '').trim()).filter(Boolean);
+      }
+
+      if (typeof value === 'string') {
+        const raw = value.trim();
+        if (!raw) return [];
+        if ((raw.startsWith('[') && raw.endsWith(']')) || (raw.startsWith('{') && raw.endsWith('}'))) {
+          try { return normalizeTextList(JSON.parse(raw)); } catch(e) {}
+        }
+        return raw.split(/[;,\n|]+/).map(item => item.trim()).filter(Boolean);
+      }
+
+      return [];
+    }
 
     function normalizeInitiativeAction(action = {}){
       return {
@@ -1014,8 +1025,9 @@
     }
 
     function normalizeObjective(obj){
-      const invited = obj.invited || obj.involved || [];
-      const activities = obj.activities || obj.initiatives || [];
+      const invited = normalizeTextList(obj.invited || obj.involved || []);
+      const indicatorSource = toObjectArray(obj.indicators);
+      const activities = toObjectArray(obj.activities || obj.initiatives || []);
       return {
         id: obj.id || crypto.randomUUID(),
         planningId: obj.planningId || 'plan_demo_2026',
@@ -1026,7 +1038,7 @@
         leader: obj.leader || '',
         createdBy: obj.createdBy || obj.leader || 'Sistema',
         invited,
-        indicators: (obj.indicators || []).map(ind => ({
+        indicators: indicatorSource.map(ind => ({
           name: ind.name || '',
           action: ind.action || 'Incrementar',
           unit: ind.unit || '',
@@ -1068,9 +1080,9 @@
           dataUrl: item?.dataUrl || item?.url || '',
           addedAt: item?.addedAt || item?.date || new Date().toISOString()
         })) : [],
-        tags: Array.isArray(obj.tags) ? obj.tags : [],
-        areas: Array.isArray(obj.areas) ? obj.areas : [],
-        linkedProjects: Array.isArray(obj.linkedProjects) ? obj.linkedProjects : [],
+        tags: normalizeTextList(obj.tags),
+        areas: normalizeTextList(obj.areas),
+        linkedProjects: normalizeTextList(obj.linkedProjects),
         status: obj.status || 'activo',
         comments: Array.isArray(obj.comments) ? obj.comments.map(normalizeComment).filter(c=>c.text) : [],
         history: Array.isArray(obj.history) ? obj.history : []
@@ -1124,19 +1136,7 @@
 
     function persistObjectives(){ localStorage.setItem(SAVE_KEY, JSON.stringify(state.objectives)); }
     function sameId(a, b){ return String(a) === String(b); }
-    function parseFlexibleDate(value){
-      if (!value) return null;
-      if (value instanceof Date && !Number.isNaN(value.getTime())) return value;
-      const raw = String(value).trim();
-      if (!raw) return null;
-      const date = /^\d{4}-\d{2}-\d{2}$/.test(raw) ? new Date(raw + 'T00:00:00') : new Date(raw);
-      return Number.isNaN(date.getTime()) ? null : date;
-    }
-    function formatDate(dateString){
-      const date = parseFlexibleDate(dateString);
-      if (!date) return '—';
-      return new Intl.DateTimeFormat('es-MX', { day:'2-digit', month:'short', year:'numeric' }).format(date);
-    }
+    function formatDate(dateString){ if (!dateString) return '—'; const date = new Date(dateString + 'T00:00:00'); return new Intl.DateTimeFormat('es-MX', { day:'2-digit', month:'short', year:'numeric' }).format(date); }
     function statusLabel(status){ return ({activo:'Activo', en_riesgo:'En riesgo', pausado:'Pausado', cumplido:'Cumplido'})[status] || status; }
     function getProgressColor(value){ if (value >= 80) return 'var(--green)'; if (value >= 50) return 'var(--yellow)'; return 'var(--red)'; }
     function getEffectiveTarget(indicator = {}, referenceDate = new Date()){
@@ -1187,10 +1187,9 @@
       return Math.round(vals.reduce((a,b)=>a+b,0) / vals.length);
     }
     function calculateQualitativeProgress(activities=[]){ if (!activities.length) return 0; const vals = activities.map(item => Math.max(0, Math.min(100, Number(item.progress || 0)))); return Math.round(vals.reduce((a,b)=>a+b,0) / vals.length); }
-    function uniqueParticipants(obj){ return Array.from(new Set([obj.createdBy, obj.leader, ...(obj.invited || [])].filter(Boolean))); }
+    function uniqueParticipants(obj){ return Array.from(new Set([obj.createdBy, obj.leader, ...normalizeTextList(obj.invited)].filter(Boolean))); }
     function formatDateTime(date = new Date()){
-      const value = parseFlexibleDate(date);
-      if (!value) return '—';
+      const value = date instanceof Date ? date : new Date(date);
       return new Intl.DateTimeFormat('es-MX', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' }).format(value);
     }
     function formatTime(timeString){
@@ -1388,9 +1387,9 @@
       document.getElementById('endDate').value = obj.endDate;
       document.getElementById('leader').value = obj.leader;
       document.getElementById('objectiveStatus').value = obj.status;
-      setMultiSelectValues('invited', obj.invited);
-      setMultiSelectValues('areas', obj.areas);
-      setMultiSelectValues('linkedProjects', obj.linkedProjects);
+      setMultiSelectValues('invited', normalizeTextList(obj.invited));
+      setMultiSelectValues('areas', normalizeTextList(obj.areas));
+      setMultiSelectValues('linkedProjects', normalizeTextList(obj.linkedProjects));
       indicatorsList.innerHTML = '';
       activitiesList.innerHTML = '';
       (obj.indicators.length ? obj.indicators : [{}]).forEach(addIndicatorRow);
@@ -1404,7 +1403,7 @@
       const obj = state.objectives.find(item => sameId(item.id, id));
       if (!obj) return;
       if (!confirm(`¿Seguro que deseas eliminar el objetivo "${obj.name}"?`)) return;
-      state.objectives = state.objectives.filter(item => !sameId(item.id, id));
+      state.objectives = state.objectives.filter(item => item.id !== id);
       persistObjectives();
       renderObjectives();
       if (sameId(state.detailId, id)) closeDetailModal();
@@ -1571,7 +1570,7 @@
       const query = document.getElementById('searchInput').value.trim().toLowerCase();
       const status = document.getElementById('statusFilter').value;
       const filtered = state.objectives.filter(obj => sameId(obj.planningId, state.currentPlanningId)).filter(obj => {
-        const haystack = [obj.name, obj.description, obj.leader, obj.createdBy, ...(obj.tags || []), ...(obj.areas || []), ...(obj.linkedProjects || []), ...(obj.invited || []), ...((obj.reminders || []).map(x => x.text || '')), ...((obj.activities || []).flatMap(x => [x.name || '', x.owner || '', x.status || '', x.dueDate || ''])), ...((obj.checklist || []).flatMap(x => [x.text || '', x.dueDate || ''])), ...((obj.links || []).flatMap(x => [x.title || '', x.url || ''])), ...((obj.attachments || []).map(x => x.name || ''))].join(' ').toLowerCase();
+        const haystack = [obj.name, obj.description, obj.leader, obj.createdBy, ...normalizeTextList(obj.tags), ...normalizeTextList(obj.areas), ...normalizeTextList(obj.linkedProjects), ...normalizeTextList(obj.invited), ...((obj.reminders || []).map(x => x.text || '')), ...((obj.activities || []).flatMap(x => [x.name || '', x.owner || '', x.status || '', x.dueDate || ''])), ...((obj.checklist || []).flatMap(x => [x.text || '', x.dueDate || ''])), ...((obj.links || []).flatMap(x => [x.title || '', x.url || ''])), ...((obj.attachments || []).map(x => x.name || ''))].join(' ').toLowerCase();
         return (!query || haystack.includes(query)) && (status === 'all' || obj.status === status);
       });
 
@@ -1592,7 +1591,7 @@
           <td><span class="status-badge status-${obj.status}">${statusLabel(obj.status)}</span></td>
           <td>
             <div class="actions-inline">
-              <button class="btn-light small" type="button" data-view-id="${escapeHtml(obj.id)}" onclick="return window.__openObjectiveDetail(this)">Detalles</button>
+              <button class="btn-light small" type="button" data-view-id="${obj.id}">Detalles</button>
               <button class="btn-secondary small" type="button" data-edit-id="${obj.id}">Editar</button>
               <button class="btn-danger small" type="button" data-delete-id="${obj.id}">Eliminar</button>
             </div>
@@ -1647,7 +1646,7 @@
         btn.onclick = (e) => {
           e.preventDefault();
           e.stopPropagation();
-          openDetailModal(btn.getAttribute('data-view-id'));
+          openDetailModal(btn.dataset.viewId);
         };
       });
       document.querySelectorAll('[data-edit-id]').forEach(btn => btn.onclick = () => startEdit(btn.dataset.editId));
@@ -2056,23 +2055,15 @@
     function openDetailModal(id){
       const obj = state.objectives.find(item => sameId(item.id, id));
       if (!obj) {
-        console.warn('No se encontró objetivo para detalle:', id, state.objectives.map(item => item.id));
         alert('No se pudo abrir el detalle del objetivo. Revisa que el objetivo tenga un ID válido.');
         return;
       }
-      try {
-        state.detailId = obj.id;
-        state.detailTab = 'comments';
-        state.detailIndicatorView = 'active';
-        renderDetailModal();
-        detailModal.classList.add('open');
-        detailModal.setAttribute('aria-hidden', 'false');
-      } catch (error) {
-        console.error('Error al abrir detalle del objetivo:', error);
-        detailContent.innerHTML = `<div class="detail-shell"><div class="detail-topbar"><div class="detail-title-row"><button class="icon-btn" type="button" onclick="closeDetailModal()">←</button><h2>${escapeHtml(obj.name || 'Detalle del objetivo')}</h2></div></div><div class="detail-panel"><h3>No se pudo renderizar el detalle completo</h3><div class="desc-text">El objetivo existe, pero algún dato guardado tiene un formato inválido. Error: ${escapeHtml(error.message || error)}</div><button class="btn-secondary" type="button" onclick="startEdit('${String(obj.id).replace(/'/g, "\\'")}')">Editar objetivo</button></div></div>`;
-        detailModal.classList.add('open');
-        detailModal.setAttribute('aria-hidden', 'false');
-      }
+      state.detailId = obj.id;
+      state.detailTab = 'comments';
+      state.detailIndicatorView = 'active';
+      renderDetailModal();
+      detailModal.classList.add('open');
+      detailModal.setAttribute('aria-hidden', 'false');
     }
 
     function closeDetailModal(){
@@ -2146,7 +2137,7 @@
                 <div class="three-col">
                   <div><div class="subtle-label">Creador</div><div class="meta-value">${escapeHtml(obj.createdBy || '—')}</div></div>
                   <div><div class="subtle-label">Líder Responsable</div><div class="meta-value">${escapeHtml(obj.leader || '—')}</div></div>
-                  <div><div class="subtle-label">Invitados</div><div class="meta-value">${escapeHtml((obj.invited || []).join(', ') || '—')}</div></div>
+                  <div><div class="subtle-label">Invitados</div><div class="meta-value">${escapeHtml(normalizeTextList(obj.invited).join(', ') || '—')}</div></div>
                 </div>
               </div>
 
