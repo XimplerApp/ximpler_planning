@@ -942,6 +942,10 @@
     const initiativeActionsContent = document.getElementById('initiativeActionsContent');
     const actionDetailModal = document.getElementById('actionDetailModal');
 
+    // Guarda una copia ya normalizada de los datos cargados para evitar que datos viejos/importados rompan el detalle.
+    try { persistObjectives(); persistPlannings(); } catch(e) { console.warn('No se pudo normalizar localStorage al inicio:', e); }
+
+
     function normalizeComment(comment){
       if (typeof comment === 'string') return { author:'Sistema', text:comment, date:new Date().toISOString().slice(0,10) };
       return { author: comment?.author || 'Sistema', text: comment?.text || '', date: comment?.date || new Date().toISOString().slice(0,10) };
@@ -1591,7 +1595,7 @@
           <td><span class="status-badge status-${obj.status}">${statusLabel(obj.status)}</span></td>
           <td>
             <div class="actions-inline">
-              <button class="btn-light small" type="button" data-view-id="${obj.id}">Detalles</button>
+              <button class="btn-light small" type="button" data-view-id="${escapeHtml(String(obj.id))}" onclick="return openObjectiveDetailHard(this.getAttribute('data-view-id'))">Detalles</button>
               <button class="btn-secondary small" type="button" data-edit-id="${obj.id}">Editar</button>
               <button class="btn-danger small" type="button" data-delete-id="${obj.id}">Eliminar</button>
             </div>
@@ -2051,6 +2055,22 @@
       renderObjectives();
       if (state.detailId) renderDetailModal();
     }
+
+    function openObjectiveDetailHard(id){
+      const cleanId = String(id || '').trim();
+      if (!cleanId) {
+        alert('No se encontró el ID del objetivo para abrir el detalle.');
+        return false;
+      }
+      try {
+        openDetailModal(cleanId);
+      } catch (error) {
+        console.error('Fallo crítico al abrir Detalles:', error);
+        alert('No se pudo abrir Detalles. Error: ' + (error && error.message ? error.message : error));
+      }
+      return false;
+    }
+    window.openObjectiveDetailHard = openObjectiveDetailHard;
 
     function openDetailModal(id){
       const obj = state.objectives.find(item => sameId(item.id, id));
@@ -2875,6 +2895,14 @@
         closeActionDetailModal();
       }
     });
+
+    document.addEventListener('click', function(e){
+      const btn = e.target && e.target.closest ? e.target.closest('button[data-view-id]') : null;
+      if (!btn) return;
+      e.preventDefault();
+      e.stopPropagation();
+      openObjectiveDetailHard(btn.getAttribute('data-view-id'));
+    }, true);
 
     resetForm();
     renderPlannings();
